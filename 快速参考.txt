@@ -1,0 +1,104 @@
+╔════════════════════════════════════════════════════════════╗
+║                                                            ║
+║          CAD工具包 - 更新系统快速参考                      ║
+║                                                            ║
+╚════════════════════════════════════════════════════════════╝
+
+【核心文件】
+
+  update_manager.py          更新管理器（核心）
+  installer_config.py        安装程序配置
+  demo_update_system.py      演示程序
+  启动完整系统.bat           系统启动器
+
+【快速启动】
+
+  方式1：双击 启动完整系统.bat
+  方式2：python demo_update_system.py
+
+【主要功能】
+
+  ✓ 自动更新检查
+  ✓ 消息推送通知
+  ✓ 专业安装程序
+  ✓ 版本管理工具
+
+【集成到主程序】
+
+  # 在 cad_toolkit_gui.py 中添加：
+  from update_manager import integrate_update_manager
+  
+  # 在 MainWindow.__init__ 末尾：
+  integrate_update_manager(self)
+
+【测试更新功能】
+
+  1. 启动服务器：
+     cd website
+     python -m http.server 8000
+  
+  2. 运行演示：
+     python demo_update_system.py
+  
+  3. 测试发现新版本：
+     修改 update_manager.py 中 CURRENT_VERSION = "2.5.0"
+
+【创建安装程序】
+
+  1. 生成配置：python installer_config.py
+  2. 安装 Inno Setup
+  3. 打开 installer.iss 并编译
+
+【配置消息推送】
+
+  编辑 website/version.json：
+  
+  "messages": [
+    {
+      "id": "msg_id",
+      "title": "标题",
+      "icon": "🎉",
+      "content": "<p>内容</p>",
+      "expire_date": "2026-12-31"
+    }
+  ]
+
+【版本发布流程】
+
+  1. 更新版本号
+  2. 打包程序
+  3. 运行：python website/update-version.py
+  4. 创建安装程序
+  5. 部署到服务器
+
+【常用命令】
+
+  # 清除测试设置
+  python clear_update_settings.py
+  
+  # 一键集成
+  python integrate_update.py
+  
+  # 启动服务器
+  cd website && python -m http.server 8000
+
+【文档】
+
+  完成清单.md              总览和检查清单
+  更新系统使用说明.md      详细使用指南
+  集成更新系统指南.md      完整集成文档
+
+【服务器地址】
+
+  本地：http://localhost:8000
+  版本信息：http://localhost:8000/version.json
+
+【当前版本】
+
+  v3.0.0
+
+【技术支持】
+
+  查看文档或访问 http://localhost:8000
+
+╚════════════════════════════════════════════════════════════╝

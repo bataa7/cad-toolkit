@@ -1,0 +1,78 @@
+{
+  "latest_version": "3.0.0",
+  "release_date": "2026-03-04",
+  "download_url": "CAD工具包.exe",
+  "file_size": "52428800",
+  "force_update": false,
+  "minimum_version": "2.5.0",
+  "update_notes": "建议所有用户更新到最新版本以获得最佳性能和新功能",
+  "messages": [
+    {
+      "id": "welcome_3_0",
+      "title": "欢迎使用 CAD工具包 v3.0",
+      "icon": "🎉",
+      "content": "<p>感谢使用 CAD工具包！</p><p>v3.0 版本带来了全新的界面设计和强大的自动排版功能。</p><p>如需帮助，请查看使用文档或访问我们的网站。</p>",
+      "action_text": "查看新功能",
+      "action_url": "http://localhost:8000/#features",
+      "expire_date": "2026-04-04"
+    },
+    {
+      "id": "tip_auto_nesting",
+      "title": "功能提示：自动排版",
+      "icon": "💡",
+      "content": "<p><b>您知道吗？</b></p><p>新版本的自动排版功能可以智能优化板材利用率，节省材料成本。</p><p>在"自动排版"选项卡中尝试这个功能吧！</p>",
+      "action_text": "了解更多",
+      "action_url": "http://localhost:8000/#docs",
+      "expire_date": "2026-05-04"
+    }
+  ],
+  "changelog": [
+    {
+      "version": "3.0.0",
+      "date": "2026-03-04",
+      "type": "major",
+      "changes": [
+        "全新界面设计，操作更加直观",
+        "新增自动排版功能，支持多板材优化",
+        "优化块筛寻算法，查找速度提升50%",
+        "支持更多DXF实体类型",
+        "修复文本编码问题，完美支持中文",
+        "新增BOM数量计算器模块",
+        "改进Excel数据匹配准确度"
+      ],
+      "download_count": 0
+    },
+    {
+      "version": "2.8.0",
+      "date": "2025-12-15",
+      "type": "minor",
+      "changes": [
+        "新增文本内容批量更改功能",
+        "优化块合并布局算法",
+        "支持按材质厚度自动分组",
+        "修复大文件处理内存溢出问题",
+        "改进进度显示和日志输出"
+      ],
+      "download_count": 156
+    },
+    {
+      "version": "2.5.0",
+      "date": "2025-09-20",
+      "type": "minor",
+      "changes": [
+        "新增块批量导出功能",
+        "支持Excel数据关联",
+        "优化文本识别准确度",
+        "修复块引用嵌套问题"
+      ],
+      "download_count": 243
+    }
+  ],
+  "system_requirements": {
+    "os": "Windows 7/8/10/11",
+    "ram": "4GB",
+    "disk_space": "100MB",
+    "additional": "无需安装其他依赖"
+  },
+  "update_notes": "建议所有用户更新到最新版本以获得最佳性能和新功能"
+}

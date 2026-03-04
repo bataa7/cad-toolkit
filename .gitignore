@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+.venv/
+new_venv/
+ENV/
+env/
+
+# PyQt
+*.ui~
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# CAD files (backup)
+cad_backup/
+*.bak
+*.dwl
+*.dwl2
+
+# Logs
+*.log
+cad_block_creator.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build
+*.spec
+build/
+dist/
+
+# Temporary files
+*.tmp
+temp/
+tmp/
+
+# Excel
+~$*.xlsx
+~$*.xls
+
+# User config
+.cad_toolkit/

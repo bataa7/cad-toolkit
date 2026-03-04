@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAD工具包 - DXF文件批量处理工具</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="version-check.js"></script>
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <div class="logo">
+                <h1>CAD工具包</h1>
+            </div>
+            <ul class="nav-links">
+                <li><a href="#features">功能特性</a></li>
+                <li><a href="#download">下载</a></li>
+                <li><a href="#docs">使用文档</a></li>
+                <li><a href="#about">关于</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <section class="hero">
+        <div class="container">
+            <h2>DXF文件批量处理工具</h2>
+            <p>高效处理CAD文件，支持块管理、自动排版、BOM计算等多种功能</p>
+            <div class="cta-buttons">
+                <a href="#download" class="btn btn-primary">立即下载</a>
+                <a href="#docs" class="btn btn-secondary">查看文档</a>
+            </div>
+        </div>
+    </section>
+
+    <section id="features" class="features">
+        <div class="container">
+            <h2>核心功能</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">📦</div>
+                    <h3>块批量管理</h3>
+                    <p>批量导出、创建和管理CAD块，支持自动命名和属性添加</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔍</div>
+                    <h3>智能筛寻合并</h3>
+                    <p>根据Excel BOM清单快速查找并合并块，按材质厚度自动分组</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">✏️</div>
+                    <h3>文本批量更新</h3>
+                    <p>根据Excel数据批量更新CAD文本内容，支持数量追加和文本重构</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">📐</div>
+                    <h3>自动排版</h3>
+                    <p>智能排版CAD图形，按材质和厚度分组，优化板材利用率</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔗</div>
+                    <h3>文件合并</h3>
+                    <p>批量合并多个DXF文件，自动布局排列，可选显示文件名</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">📊</div>
+                    <h3>BOM数量计算</h3>
+                    <p>自动计算层级BOM总数量，验证数据完整性和序号关系</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="highlights" class="highlights">
+        <div class="container">
+            <h2>CAD工具包</h2>
+            <div class="highlight-list">
+                <div class="highlight-item">
+                    <span class="check">✓</span>
+                    <div>
+                        <h4>批量处理</h4>
+                        <p>支持单个文件、多个文件和整个目录的批量处理</p>
+                    </div>
+                </div>
+                <div class="highlight-item">
+                    <span class="check">✓</span>
+                    <div>
+                        <h4>Excel集成</h4>
+                        <p>与Excel无缝集成，支持BOM清单导入和结果导出</p>
+                    </div>
+                </div>
+                <div class="highlight-item">
+                    <span class="check">✓</span>
+                    <div>
+                        <h4>智能识别</h4>
+                        <p>自动识别材质、厚度、物料ID等信息，支持多种格式</p>
+                    </div>
+                </div>
+                <div class="highlight-item">
+                    <span class="check">✓</span>
+                    <div>
+                        <h4>友好界面</h4>
+                        <p>图形化操作界面，实时进度显示，操作简单直观</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="download" class="download">
+        <div class="container">
+            <h2>下载安装</h2>
+            <div class="download-card">
+                <div class="version-badge">最新版本</div>
+                <h3 id="version-title">CAD工具包 v3.0.0</h3>
+                <p class="version-info">
+                    <span id="release-date">发布日期：2026-03-04</span>
+                    <span class="separator">|</span>
+                    <span id="download-count">下载次数：0</span>
+                </p>
+                
+                <div class="system-requirements">
+                    <h4>系统要求</h4>
+                    <ul>
+                        <li>操作系统：Windows 7/8/10/11</li>
+                        <li>内存：4GB RAM</li>
+                        <li>磁盘空间：100MB</li>
+                        <li>无需安装其他依赖</li>
+                    </ul>
+                </div>
+
+                <div class="download-actions">
+                    <a href="CAD工具包.exe" class="btn btn-download-primary" download onclick="trackDownload()">
+                        <span class="download-icon">⬇</span>
+                        立即下载
+                        <span class="file-size" id="file-size">(50 MB)</span>
+                    </a>
+                    <button class="btn btn-changelog" onclick="toggleChangelog()">
+                        查看更新日志
+                    </button>
+                </div>
+                
+                <p class="download-note">免费使用 | 绿色软件，无需安装</p>
+            </div>
+
+            <!-- 更新日志 -->
+            <div id="changelog-section" class="changelog-section" style="display: none;">
+                <h3>版本更新历史</h3>
+                <div id="changelog-content" class="changelog-content">
+                    <!-- 动态加载 -->
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="docs" class="docs">
+        <div class="container">
+            <h2>使用文档</h2>
+            <div class="docs-grid">
+                <div class="doc-card">
+                    <h3>快速开始</h3>
+                    <p>下载程序后，双击运行即可启动图形界面。首次启动可能需要几秒钟加载时间。</p>
+                </div>
+                <div class="doc-card">
+                    <h3>功能模块</h3>
+                    <ul class="doc-list">
+                        <li>块批量导出 - 提取DXF文件中的所有块</li>
+                        <li>块批量创建 - 将图形组合成块并命名</li>
+                        <li>块筛寻和合并 - 根据Excel查找并合并块</li>
+                        <li>文本内容更改 - 批量更新CAD文本</li>
+                        <li>CAD文件合并 - 合并多个DXF文件</li>
+                        <li>BOM数量计算 - 计算层级BOM总数量</li>
+                        <li>自动排版 - 智能排版优化板材</li>
+                    </ul>
+                </div>
+                <div class="doc-card">
+                    <h3>注意事项</h3>
+                    <ul class="doc-list">
+                        <li>处理前请备份原始文件</li>
+                        <li>支持DXF R2010及以下版本</li>
+                        <li>建议先用少量文件测试</li>
+                        <li>大量文件建议分批处理</li>
+                    </ul>
+                </div>
+                <div class="doc-card">
+                    <h3>详细文档</h3>
+                    <p>提供完整的使用说明和功能模块文档，包含详细的操作步骤和示例。</p>
+                    <a href="CAD工具包使用说明.pdf" class="doc-link" download>使用说明 (PDF)</a>
+                    <br><br>
+                    <a href="CAD工具包功能模块说明.pdf" class="doc-link" download>功能模块说明 (PDF)</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="about" class="about">
+        <div class="container">
+            <h2>关于项目</h2>
+            <div class="about-content">
+                <p>主要解决CAD图纸批量处理、BOM清单管理、自动排版等实际生产需求。</p>
+                <div class="tech-stack">
+                    <h3>技术栈</h3>
+                    <div class="tech-tags">
+                        <span class="tag">Python</span>
+                        <span class="tag">ezdxf</span>
+                        <span class="tag">PyQt5</span>
+                        <span class="tag">pandas</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CAD工具包</p>
+        </div>
+    </footer>
+</body>
+</html>
