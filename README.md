@@ -17,7 +17,29 @@
 
 1. 克隆仓库:
 ```bash
-git clone https://github.com/bataa7/cad-toolkit//github.com/your-username/cad-toolkit/releases) 页面下载最新的可执行文件。
+git clone https://github.com/bataa7/cad-toolkit.git
+cd cad-toolkit
+```
+
+2. 创建虚拟环境（推荐）:
+```bash
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+```
+
+3. 安装依赖:
+```bash
+pip install -r requirements.txt
+```
+
+4. 运行程序:
+```bash
+python cad_toolkit_gui.py
+```
+
+### 从GitHub下载可执行文件
+
+访问 [Releases](https://github.com/bataa7/cad-toolkit/releases) 页面下载最新的可执行文件。
 
 ## 依赖项
 

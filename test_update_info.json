@@ -1,0 +1,39 @@
+{
+  "version": "1.1.1",
+  "changelog": "版本 1.1.1 更新内容：\n\n新增功能：\n• 消息推送系统 - 及时接收重要通知\n• 增量更新系统 - 更快更省流量的更新方式\n• 通知中心 - 统一管理所有消息\n\n功能改进：\n• 优化图块查找性能，速度提升30%\n• 改进DXF文件解析，支持更多格式\n• 增强错误处理，提供更友好的提示\n\nBug修复：\n• 修复大文件处理时的内存泄漏问题\n• 修复特殊字符导致的崩溃\n• 修复Excel导出格式问题\n\n其他：\n• 更新依赖库到最新版本\n• 优化UI界面，提升用户体验",
+  "size": 5242880,
+  "release_date": "2026-03-05",
+  "patch_files": [
+    {
+      "name": "patch_notification_system.json",
+      "url": "https://example.com/updates/patch_notification_system.json",
+      "hash": "abc123def456",
+      "target": "notification_system.py",
+      "action": "create",
+      "source": "notification_system.py"
+    },
+    {
+      "name": "patch_update_system.json",
+      "url": "https://example.com/updates/patch_update_system.json",
+      "hash": "def456abc123",
+      "target": "update_system.py",
+      "action": "create",
+      "source": "update_system.py"
+    },
+    {
+      "name": "patch_main_gui.json",
+      "url": "https://example.com/updates/patch_main_gui.json",
+      "hash": "789xyz456abc",
+      "target": "cad_toolkit_gui.py",
+      "action": "replace",
+      "source": "cad_toolkit_gui.py"
+    }
+  ],
+  "full_package": {
+    "name": "CAD工具包_v1.1.1.zip",
+    "url": "https://example.com/updates/CAD工具包_v1.1.0.zip",
+    "hash": "full_package_hash_here"
+  },
+  "min_version": "1.0.0",
+  "force_update": false
+}

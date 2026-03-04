@@ -39,6 +39,17 @@ except Exception as e:
 # 注意：为减少程序启动时的导入开销，下面几个大型/延迟使用的库不在模块顶层导入，
 # 而是在需要时局部导入（例如在线程的 run/process 方法中）。
 
+# 导入消息推送和更新系统
+try:
+    from notification_system import NotificationManager, NotificationWidget, NotificationFetcher
+    from update_system import UpdateChecker, UpdateDialog
+    from system_config import NOTIFICATION_CONFIG, UPDATE_CONFIG, APP_VERSION
+    NOTIFICATION_ENABLED = True
+except ImportError as e:
+    print(f"消息推送和更新系统未安装: {e}")
+    NOTIFICATION_ENABLED = False
+    APP_VERSION = "3.8"
+
 def _find_local_exe(filename):
     base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
     candidates = [
@@ -4005,151 +4016,32 @@ class FeaturesDialog(QDialog):
         layout.addLayout(btn_layout)
         self.setLayout(layout)
 
-class SharedPlatformTab(QWidget):
-    """待办集成选项卡"""
-    def __init__(self):
-        super().__init__()
-        self.process = None
-        self.host_ip = self.get_local_ip()
-        self.init_ui()
-        # 尝试启动服务
-        QTimer.singleShot(500, self.check_and_start_server)
-    
-    def get_local_ip(self):
-        """获取本机内网IP"""
-        import socket
-        try:
-            # 创建一个 UDP 套接字
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            # 尝试连接到一个外部 IP（不需要真正连接成功）
-            s.connect(("8.8.8.8", 80))
-            # 获取本地 IP
-            ip = s.getsockname()[0]
-            s.close()
-            return ip
-        except Exception:
-            return "localhost"
-        
-    def init_ui(self):
-        layout = QVBoxLayout()
-        
-        # 顶部控制栏
-        control_layout = QHBoxLayout()
-        self.status_label = QLabel("正在检查待办服务...")
-        control_layout.addWidget(self.status_label)
-        control_layout.addStretch()
-        
-        self.refresh_btn = QPushButton("刷新")
-        self.refresh_btn.clicked.connect(self.reload_page)
-        control_layout.addWidget(self.refresh_btn)
-        
-        self.browser_btn = QPushButton("在浏览器中打开")
-        self.browser_btn.clicked.connect(self.open_external_browser)
-        control_layout.addWidget(self.browser_btn)
-        
-        layout.addLayout(control_layout)
-        
-        # Web视图容器
-        self.web_container = QWidget()
-        self.web_layout = QVBoxLayout(self.web_container)
-        self.web_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # 尝试加载 QWebEngineView
-        self.web_view = None
-        try:
-            from PyQt5.QtWebEngineWidgets import QWebEngineView
-            self.web_view = QWebEngineView()
-            self.web_layout.addWidget(self.web_view)
-            self.has_webengine = True
-        except ImportError:
-            self.has_webengine = False
-            msg = QLabel("未检测到内置浏览器组件 (PyQtWebEngine)，\n请点击上方按钮在外部浏览器中打开待办。")
-            msg.setAlignment(Qt.AlignCenter)
-            msg.setStyleSheet("font-size: 14px; color: #666;")
-            self.web_layout.addWidget(msg)
-            
-        layout.addWidget(self.web_container)
-        self.setLayout(layout)
-        
-    def check_and_start_server(self):
-        """检查服务是否运行，未运行则启动"""
-        import socket
-        
-        def is_port_open(host, port):
-            try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.settimeout(1)
-                    return s.connect_ex((host, port)) == 0
-            except:
-                return False
-                
-        # 检查前端端口 5173
-        # 优先检查内网 IP
-        if is_port_open(self.host_ip, 5173):
-            self.status_label.setText(f"待办服务运行中 ({self.host_ip}:5173)")
-            self.load_url(f"http://{self.host_ip}:5173")
-        # 其次检查 localhost
-        elif is_port_open('localhost', 5173):
-            self.status_label.setText(f"待办服务运行中 (localhost:5173)")
-            # 即使 localhost 通了，也尝试用 host_ip 访问（如果它不是 localhost）
-            self.load_url(f"http://{self.host_ip}:5173")
-        else:
-            self.status_label.setText("正在启动待办服务...")
-            self.start_server_process()
-            
-    def start_server_process(self):
-        """启动内置 Python 服务器"""
-        try:
-            # 导入服务模块
-            import todo_server
-            import threading
-            
-            # 创建并启动守护线程
-            if not hasattr(self, 'server_thread') or not self.server_thread.is_alive():
-                self.server_thread = threading.Thread(
-                    target=todo_server.run_server, 
-                    args=(5173,), 
-                    daemon=True
-                )
-                self.server_thread.start()
-            
-            self.status_label.setText("正在启动内置服务...")
-            
-            # 等待一会儿让服务启动
-            target_url = f"http://{self.host_ip}:5173"
-            # 延时检查，给予服务器启动时间
-            QTimer.singleShot(1500, lambda: self.load_url(target_url))
-            
-        except Exception as e:
-            self.status_label.setText(f"启动内置服务失败: {e}")
-
-    def load_url(self, url):
-        if self.has_webengine and self.web_view:
-            from PyQt5.QtCore import QUrl
-            self.web_view.setUrl(QUrl(url))
-        else:
-            self.status_label.setText(f"服务已就绪: {url}")
-            
-    def reload_page(self):
-        if self.has_webengine and self.web_view:
-            self.web_view.reload()
-        else:
-            self.check_and_start_server()
-
-    def open_external_browser(self):
-        from PyQt5.QtGui import QDesktopServices
-        from PyQt5.QtCore import QUrl
-        QDesktopServices.openUrl(QUrl(f"http://{self.host_ip}:5173"))
 
 class MainWindow(QMainWindow):
     """主窗口"""
     def __init__(self):
         super().__init__()
+        
+        # 初始化通知管理器
+        if NOTIFICATION_ENABLED:
+            self.notification_manager = NotificationManager(
+                api_url=NOTIFICATION_CONFIG['api_url'],
+                cache_file=NOTIFICATION_CONFIG['cache_file']
+            )
+        else:
+            self.notification_manager = None
+        
         self.init_ui()
+        
+        # 初始化通知和更新系统
+        if NOTIFICATION_ENABLED:
+            self.init_notification_system()
+            self.init_update_system()
     
     def init_ui(self):
         # 设置窗口标题和大小
-        self.setWindowTitle('CAD工具包')
+        version_text = f"CAD工具包 v{APP_VERSION}" if NOTIFICATION_ENABLED else "CAD工具包 v3.8"
+        self.setWindowTitle(version_text)
         try:
             screen = QApplication.primaryScreen()
             if screen:
@@ -4220,8 +4112,7 @@ class MainWindow(QMainWindow):
             ("CAD文件合并", "merge"),
             ("文本内容更改", "text"),
             ("DXF/DWG 转换", "convert"),
-            ("2D Nesting 排版", "nest"),
-            ("待办", "shared")
+            ("2D Nesting 排版", "nest")
         ]
         
         for name, icon_name in nav_items:
@@ -4253,7 +4144,6 @@ class MainWindow(QMainWindow):
         self.text_updater_tab = TextUpdaterTab()
         self.converter_tab = DxfDwgConverterTab()
         self.nesting_tab = SolidEdgeNestingTab()
-        self.shared_tab = SharedPlatformTab()
         
         # 添加页面到堆叠窗口
         self.stacked_widget.addWidget(self.bom_tab)
@@ -4264,7 +4154,6 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.text_updater_tab)
         self.stacked_widget.addWidget(self.converter_tab)
         self.stacked_widget.addWidget(self.nesting_tab)
-        self.stacked_widget.addWidget(self.shared_tab)
         
         content_layout.addWidget(self.stacked_widget)
         
@@ -4288,6 +4177,11 @@ class MainWindow(QMainWindow):
         # 创建状态栏
         self.statusBar().showMessage("就绪")
         
+        # 添加通知小部件到状态栏
+        if NOTIFICATION_ENABLED and self.notification_manager:
+            self.notification_widget = NotificationWidget(self.notification_manager, self)
+            self.statusBar().addPermanentWidget(self.notification_widget)
+        
     def change_page(self, index):
         """切换页面"""
         self.stacked_widget.setCurrentIndex(index)
@@ -4303,30 +4197,164 @@ class MainWindow(QMainWindow):
         # 帮助菜单
         help_menu = menubar.addMenu("&帮助")
         
+        # 检查更新菜单项
+        if NOTIFICATION_ENABLED:
+            check_update_action = QAction("检查更新(&U)", self)
+            check_update_action.setStatusTip("检查软件更新")
+            check_update_action.triggered.connect(self.manual_check_update)
+            help_menu.addAction(check_update_action)
+            
+            # 通知中心菜单项
+            notification_action = QAction("通知中心(&N)", self)
+            notification_action.setStatusTip("查看所有通知")
+            notification_action.triggered.connect(self.show_notification_center)
+            help_menu.addAction(notification_action)
+            
+            help_menu.addSeparator()
+        
         # 功能介绍菜单项
         features_action = QAction("&功能介绍", self)
         features_action.setStatusTip("显示各模块功能介绍")
         features_action.triggered.connect(self.show_features)
         help_menu.addAction(features_action)
         
-        # 关于菜单项
-        about_action = QAction("&关于", self)
-        about_action.setStatusTip("关于应用")
-        about_action.triggered.connect(self.show_about)
-        help_menu.addAction(about_action)
-    
-    def show_about(self):
-        """显示关于对话框"""
-        QMessageBox.about(
-            self, 
-            "关于CAD工具包", 
-            "CAD工具包\n\n版本: 3.8\n\n模块\nBOM计算器，导出块，创建块，筛查合并块，CAD文件合并，更改文本内容，DXF/DWG转换，2D Nesting排版\n\n作：刘延波\n更新：2026-2-16"
-        )
+       
     
     def show_features(self):
         """显示功能介绍对话框"""
         dialog = FeaturesDialog(self)
         dialog.exec_()
+    
+    # ==================== 消息推送和更新系统方法 ====================
+    
+    def init_notification_system(self):
+        """初始化通知系统"""
+        if not NOTIFICATION_CONFIG['enabled'] or not self.notification_manager:
+            return
+        
+        # 首次获取通知
+        self.fetch_notifications()
+        
+        # 设置定时器定期检查
+        self.notification_timer = QTimer(self)
+        self.notification_timer.timeout.connect(self.fetch_notifications)
+        self.notification_timer.start(NOTIFICATION_CONFIG['check_interval'] * 1000)
+    
+    def fetch_notifications(self):
+        """获取通知"""
+        if not self.notification_manager:
+            return
+        
+        try:
+            # 保存线程引用，防止被垃圾回收
+            self.notification_fetcher = NotificationFetcher(NOTIFICATION_CONFIG['api_url'])
+            self.notification_fetcher.notifications_received.connect(self.on_notifications_received)
+            self.notification_fetcher.error_occurred.connect(self.on_notification_error)
+            self.notification_fetcher.start()
+        except Exception as e:
+            print(f"获取通知失败: {e}")
+    
+    def on_notifications_received(self, notifications):
+        """收到通知"""
+        if self.notification_manager:
+            self.notification_manager.notifications = notifications
+            if hasattr(self, 'notification_widget'):
+                self.notification_widget.update_badge()
+    
+    def on_notification_error(self, error_msg):
+        """通知获取失败"""
+        print(f"获取通知失败: {error_msg}")
+    
+    def show_notification_center(self):
+        """显示通知中心"""
+        if not self.notification_manager:
+            QMessageBox.information(self, "提示", "通知系统未启用")
+            return
+        
+        try:
+            from notification_system import NotificationDialog
+            dialog = NotificationDialog(self.notification_manager, self)
+            dialog.exec_()
+            if hasattr(self, 'notification_widget'):
+                self.notification_widget.update_badge()
+        except Exception as e:
+            QMessageBox.warning(self, "错误", f"打开通知中心失败:\n{e}")
+    
+    def init_update_system(self):
+        """初始化更新系统"""
+        if not UPDATE_CONFIG['enabled']:
+            return
+        
+        # 启动时检查更新（延迟3秒）
+        if UPDATE_CONFIG['check_on_startup']:
+            QTimer.singleShot(3000, self.check_update)
+        
+        # 设置定时器定期检查
+        self.update_timer = QTimer(self)
+        self.update_timer.timeout.connect(self.check_update)
+        self.update_timer.start(UPDATE_CONFIG['auto_check_interval'] * 1000)
+    
+    def check_update(self, silent=True):
+        """检查更新"""
+        try:
+            # 保存线程引用，防止被垃圾回收
+            self.update_checker = UpdateChecker(
+                api_url=UPDATE_CONFIG['api_url'],
+                current_version=APP_VERSION
+            )
+            self.update_checker.update_available.connect(
+                lambda info: self.on_update_available(info, silent)
+            )
+            self.update_checker.no_update.connect(
+                lambda: self.on_no_update(silent)
+            )
+            self.update_checker.error_occurred.connect(
+                lambda err: self.on_update_error(err, silent)
+            )
+            self.update_checker.start()
+        except Exception as e:
+            if not silent:
+                QMessageBox.warning(self, "错误", f"检查更新失败:\n{e}")
+    
+    def manual_check_update(self):
+        """手动检查更新"""
+        self.check_update(silent=False)
+    
+    def on_update_available(self, update_info, silent):
+        """有可用更新"""
+        # 检查是否跳过此版本
+        import json
+        
+        config_file = UPDATE_CONFIG['config_file']
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    skipped_version = config.get('skipped_version', '')
+                    if skipped_version == update_info.get('version'):
+                        if not silent:
+                            QMessageBox.information(self, "检查更新", 
+                                                   "当前已是最新版本（已跳过的版本）")
+                        return
+            except:
+                pass
+        
+        # 显示更新对话框
+        try:
+            dialog = UpdateDialog(update_info, APP_VERSION, self)
+            dialog.exec_()
+        except Exception as e:
+            QMessageBox.warning(self, "错误", f"显示更新对话框失败:\n{e}")
+    
+    def on_no_update(self, silent):
+        """无可用更新"""
+        if not silent:
+            QMessageBox.information(self, "检查更新", "当前已是最新版本")
+    
+    def on_update_error(self, error_msg, silent):
+        """更新检查失败"""
+        if not silent:
+            QMessageBox.warning(self, "检查更新", f"检查更新失败:\n{error_msg}")
 
 if __name__ == '__main__':
     # 确保中文显示正常

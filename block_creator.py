@@ -316,16 +316,16 @@ class BlockCreator:
                         if not id_val: id_val = text
                         elif not drawing_val: drawing_val = text
 
-            # 添加属性
+            # 添加属性（确保所有值都是字符串类型）
             if write_material_thickness_attrib:
-                blockref.add_attrib(tag='材质', text=material_val, insert=insertion_point, dxfattribs={'height': 10, 'style': 'Standard'})
-                blockref.add_attrib(tag='厚度', text=thickness_val, insert=(insertion_point[0], insertion_point[1]-20), dxfattribs={'height': 10, 'style': 'Standard'})
+                blockref.add_attrib(tag='材质', text=str(material_val), insert=insertion_point, dxfattribs={'height': 10, 'style': 'Standard'})
+                blockref.add_attrib(tag='厚度', text=str(thickness_val), insert=(insertion_point[0], insertion_point[1]-20), dxfattribs={'height': 10, 'style': 'Standard'})
             
             if write_id_drawing_name_attrib:
-                blockref.add_attrib(tag='物料ID', text=id_val, insert=(insertion_point[0], insertion_point[1]-40), dxfattribs={'height': 10, 'style': 'Standard'})
-                blockref.add_attrib(tag='图号', text=drawing_val, insert=(insertion_point[0], insertion_point[1]-60), dxfattribs={'height': 10, 'style': 'Standard'})
-                blockref.add_attrib(tag='名称', text=name_val, insert=(insertion_point[0], insertion_point[1]-80), dxfattribs={'height': 10, 'style': 'Standard'})
-                blockref.add_attrib(tag='总数量', text=total_qty_val, insert=(insertion_point[0], insertion_point[1]-100), dxfattribs={'height': 10, 'style': 'Standard'})
+                blockref.add_attrib(tag='物料ID', text=str(id_val), insert=(insertion_point[0], insertion_point[1]-40), dxfattribs={'height': 10, 'style': 'Standard'})
+                blockref.add_attrib(tag='图号', text=str(drawing_val), insert=(insertion_point[0], insertion_point[1]-60), dxfattribs={'height': 10, 'style': 'Standard'})
+                blockref.add_attrib(tag='名称', text=str(name_val), insert=(insertion_point[0], insertion_point[1]-80), dxfattribs={'height': 10, 'style': 'Standard'})
+                blockref.add_attrib(tag='总数量', text=str(total_qty_val), insert=(insertion_point[0], insertion_point[1]-100), dxfattribs={'height': 10, 'style': 'Standard'})
 
             return True
             

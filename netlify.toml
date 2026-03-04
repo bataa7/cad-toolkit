@@ -1,11 +1,5 @@
-# Netlify配置文件
-# CAD工具包文档网站部署配置
-
 [build]
-  # 发布目录
   publish = "docs"
-  
-  # 构建命令（静态网站不需要构建）
   command = "echo 'Static site - no build needed'"
 
 # 重定向规则
