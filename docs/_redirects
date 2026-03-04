@@ -1,0 +1,22 @@
+# Netlify重定向规则
+# 更多信息: https://docs.netlify.com/routing/redirects/
+
+# 快捷链接
+/download    https://github.com/bataa7/cad-toolkit/releases/latest    302
+/github      https://github.com/bataa7/cad-toolkit                     302
+/docs        https://github.com/bataa7/cad-toolkit/blob/main/README.md 302
+/issues      https://github.com/bataa7/cad-toolkit/issues              302
+/releases    https://github.com/bataa7/cad-toolkit/releases            302
+
+# 文档链接
+/quickstart  https://github.com/bataa7/cad-toolkit/blob/main/QUICKSTART.md           302
+/deployment  https://github.com/bataa7/cad-toolkit/blob/main/DEPLOYMENT.md           302
+/guide       https://github.com/bataa7/cad-toolkit/blob/main/UPDATE_SYSTEM_GUIDE.md  302
+/changelog   https://github.com/bataa7/cad-toolkit/blob/main/CHANGELOG.md            302
+
+# API端点（用于更新检查）
+/api/version.json       https://raw.githubusercontent.com/bataa7/cad-toolkit/main/version.json           200
+/api/notifications.json https://raw.githubusercontent.com/bataa7/cad-toolkit/main/notifications.json     200
+
+# SPA回退
+/*    /index.html   200

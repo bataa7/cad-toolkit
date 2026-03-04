@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="CAD工具包 - 功能强大的CAD文件处理工具，支持块导出、文件读取、自动更新">
+    <meta name="keywords" content="CAD,DXF,工具包,块导出,自动更新">
+    <title>CAD工具包 - 专业的CAD文件处理工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 60px 20px;
+            color: white;
+        }
+
+        h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            font-size: 1.3em;
+            opacity: 0.9;
+            margin-bottom: 30px;
+        }
+
+        .version-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin: 10px 5px;
+        }
+
+        .main-content {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            margin-top: -40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+
+        .download-section {
+            text-align: center;
+            padding: 40px 0;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .download-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 40px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-size: 1.2em;
+            font-weight: bold;
+            margin: 10px;
+            transition: transform 0.3s, box-shadow 0.3s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .download-btn.secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
+        }
+
+        .download-btn.secondary:hover {
+            box-shadow: 0 6px 20px rgba(245, 87, 108, 0.6);
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin: 40px 0;
+        }
+
+        .feature-card {
+            padding: 30px;
+            border-radius: 15px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            transition: transform 0.3s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .feature-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .feature-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+
+        .feature-desc {
+            color: #666;
+            line-height: 1.8;
+        }
+
+        .section {
+            margin: 50px 0;
+        }
+
+        .section-title {
+            font-size: 2em;
+            margin-bottom: 20px;
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .docs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .doc-card {
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            text-decoration: none;
+            color: #333;
+            transition: all 0.3s;
+        }
+
+        .doc-card:hover {
+            border-color: #667eea;
+            background: #f5f7fa;
+            transform: translateX(5px);
+        }
+
+        .doc-title {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+
+        .doc-desc {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            margin: 40px 0;
+            padding: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px;
+            color: white;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            font-size: 1em;
+            opacity: 0.9;
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: white;
+            margin-top: 50px;
+        }
+
+        .footer-links {
+            margin: 20px 0;
+        }
+
+        .footer-links a {
+            color: white;
+            text-decoration: none;
+            margin: 0 15px;
+            opacity: 0.8;
+            transition: opacity 0.3s;
+        }
+
+        .footer-links a:hover {
+            opacity: 1;
+        }
+
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .notification {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2em;
+            }
+
+            .subtitle {
+                font-size: 1em;
+            }
+
+            .main-content {
+                padding: 20px;
+            }
+
+            .features {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛠️ CAD工具包</h1>
+            <p class="subtitle">功能强大的CAD文件处理工具</p>
+            <div>
+                <span class="version-badge">📦 v1.0.0</span>
+                <span class="version-badge">🐍 Python 3.8+</span>
+                <span class="version-badge">⚡ 自动更新</span>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="download-section">
+                <h2 style="margin-bottom: 20px;">立即下载</h2>
+                <a href="https://github.com/bataa7/cad-toolkit/releases/latest" class="download-btn" target="_blank">
+                    📥 下载最新版本
+                </a>
+                <a href="https://github.com/bataa7/cad-toolkit" class="download-btn secondary" target="_blank">
+                    💻 查看源码
+                </a>
+                <div class="notification" style="margin-top: 30px; text-align: left;">
+                    <strong>💡 提示：</strong> 首次使用请先安装Python 3.8+和依赖库。详见<a href="#installation">安装说明</a>。
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">✨ 核心功能</h2>
+                <div class="features">
+                    <div class="feature-card">
+                        <div class="feature-icon">📦</div>
+                        <div class="feature-title">块批量导出</div>
+                        <div class="feature-desc">
+                            将DXF文件中的块批量导出为独立文件，支持自动命名和文本处理
+                        </div>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">📖</div>
+                        <div class="feature-title">CAD文件读取</div>
+                        <div class="feature-desc">
+                            读取和分析CAD文件内容，提取文本对象和几何实体信息
+                        </div>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">🔨</div>
+                        <div class="feature-title">CAD块创建</div>
+                        <div class="feature-desc">
+                            批量创建CAD块，支持多种文本策略和自动化处理
+                        </div>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">📊</div>
+                        <div class="feature-title">Excel数据处理</div>
+                        <div class="feature-desc">
+                            处理和验证Excel数据，自动计算总数量和层级关系
+                        </div>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">🔄</div>
+                        <div class="feature-title">自动更新检查</div>
+                        <div class="feature-desc">
+                            内置自动更新系统，及时获取最新版本和功能改进
+                        </div>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">📢</div>
+                        <div class="feature-title">消息通知</div>
+                        <div class="feature-desc">
+                            实时接收重要通知和更新信息，保持与开发团队的联系
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-number">6+</div>
+                    <div class="stat-label">核心功能</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">1500+</div>
+                    <div class="stat-label">代码行数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">17+</div>
+                    <div class="stat-label">文档文件</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">MIT</div>
+                    <div class="stat-label">开源许可</div>
+                </div>
+            </div>
+
+            <div class="section" id="installation">
+                <h2 class="section-title">📥 安装说明</h2>
+                
+                <h3 style="margin: 20px 0 10px 0;">方法1: 使用预编译版本（推荐）</h3>
+                <ol style="line-height: 2;">
+                    <li>从<a href="https://github.com/bataa7/cad-toolkit/releases/latest" target="_blank">Releases页面</a>下载最新的可执行文件</li>
+                    <li>解压到任意目录</li>
+                    <li>双击运行 <code>CAD工具包.exe</code></li>
+                </ol>
+
+                <h3 style="margin: 30px 0 10px 0;">方法2: 从源码运行</h3>
+                <ol style="line-height: 2;">
+                    <li>克隆仓库：<code>git clone https://github.com/bataa7/cad-toolkit.git</code></li>
+                    <li>安装依赖：<code>pip install -r requirements.txt</code></li>
+                    <li>运行程序：<code>python cad_toolkit_gui.py</code></li>
+                </ol>
+
+                <h3 style="margin: 30px 0 10px 0;">系统要求</h3>
+                <ul style="line-height: 2; margin-left: 20px;">
+                    <li>操作系统：Windows 7/10/11, Linux, macOS</li>
+                    <li>Python：3.8 或更高版本</li>
+                    <li>内存：建议 4GB 以上</li>
+                    <li>磁盘空间：至少 500MB</li>
+                </ul>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">📚 文档中心</h2>
+                <div class="docs-grid">
+                    <a href="https://github.com/bataa7/cad-toolkit/blob/main/QUICKSTART.md" class="doc-card" target="_blank">
+                        <div class="doc-title">🚀 快速开始</div>
+                        <div class="doc-desc">5分钟快速上手指南</div>
+                    </a>
+
+                    <a href="https://github.com/bataa7/cad-toolkit/blob/main/README.md" class="doc-card" target="_blank">
+                        <div class="doc-title">📖 使用手册</div>
+                        <div class="doc-desc">完整的功能说明和使用方法</div>
+                    </a>
+
+                    <a href="https://github.com/bataa7/cad-toolkit/blob/main/UPDATE_SYSTEM_GUIDE.md" class="doc-card" target="_blank">
+                        <div class="doc-title">🔄 更新系统</div>
+                        <div class="doc-desc">自动更新系统使用指南</div>
+                    </a>
+
+                    <a href="https://github.com/bataa7/cad-toolkit/blob/main/DEPLOYMENT.md" class="doc-card" target="_blank">
+                        <div class="doc-title">🚢 部署指南</div>
+                        <div class="doc-desc">详细的部署和配置说明</div>
+                    </a>
+
+                    <a href="https://github.com/bataa7/cad-toolkit/blob/main/CHANGELOG.md" class="doc-card" target="_blank">
+                        <div class="doc-title">📝 更新日志</div>
+                        <div class="doc-desc">版本更新记录和变更说明</div>
+                    </a>
+
+                    <a href="https://github.com/bataa7/cad-toolkit/issues" class="doc-card" target="_blank">
+                        <div class="doc-title">❓ 问题反馈</div>
+                        <div class="doc-desc">提交问题和获取帮助</div>
+                    </a>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">🤝 参与贡献</h2>
+                <p style="line-height: 2; margin: 20px 0;">
+                    欢迎参与CAD工具包的开发！你可以通过以下方式贡献：
+                </p>
+                <ul style="line-height: 2; margin-left: 20px;">
+                    <li>🐛 报告Bug和问题</li>
+                    <li>💡 提出新功能建议</li>
+                    <li>📝 改进文档</li>
+                    <li>💻 提交代码</li>
+                    <li>⭐ 给项目加星支持</li>
+                </ul>
+                <p style="margin-top: 20px;">
+                    <a href="https://github.com/bataa7/cad-toolkit/fork" target="_blank" style="color: #667eea; text-decoration: none; font-weight: bold;">
+                        Fork项目 →
+                    </a>
+                </p>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">📄 许可证</h2>
+                <p style="line-height: 2;">
+                    本项目采用 <strong>MIT License</strong> 开源许可证。你可以自由使用、修改和分发本软件。
+                </p>
+                <p style="margin-top: 10px;">
+                    <a href="https://github.com/bataa7/cad-toolkit/blob/main/LICENSE" target="_blank" style="color: #667eea;">
+                        查看完整许可证 →
+                    </a>
+                </p>
+            </div>
+        </div>
+
+        <footer>
+            <p style="font-size: 1.2em; margin-bottom: 10px;">CAD工具包 © 2026</p>
+            <div class="footer-links">
+                <a href="https://github.com/bataa7/cad-toolkit" target="_blank">GitHub</a>
+                <a href="https://github.com/bataa7/cad-toolkit/releases" target="_blank">下载</a>
+                <a href="https://github.com/bataa7/cad-toolkit/issues" target="_blank">反馈</a>
+                <a href="https://github.com/bataa7/cad-toolkit/blob/main/README.md" target="_blank">文档</a>
+            </div>
+            <p style="opacity: 0.8; margin-top: 20px;">
+                使用 ❤️ 和 Python 构建
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        // 平滑滚动
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // 动态加载最新版本信息
+        fetch('https://api.github.com/repos/bataa7/cad-toolkit/releases/latest')
+            .then(response => response.json())
+            .then(data => {
+                const versionBadges = document.querySelectorAll('.version-badge');
+                if (versionBadges[0] && data.tag_name) {
+                    versionBadges[0].textContent = `📦 ${data.tag_name}`;
+                }
+            })
+            .catch(error => console.log('无法获取版本信息'));
+    </script>
+</body>
+</html>
