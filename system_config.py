@@ -9,7 +9,7 @@ APP_VERSION = "3.8"
 # 消息推送配置
 NOTIFICATION_CONFIG = {
     # API地址 - 从服务器获取通知列表
-    "api_url": "http://localhost:5000/api/notifications",
+    "api_url": "https://raw.githubusercontent.com/bataa7/cad-toolkit/main/notifications.json",
     
     # 缓存文件路径
     "cache_file": "notifications_cache.json",
@@ -24,7 +24,7 @@ NOTIFICATION_CONFIG = {
 # 更新系统配置
 UPDATE_CONFIG = {
     # API地址 - 检查更新
-    "api_url": "http://localhost:5000/api/check_update",
+    "api_url": "https://raw.githubusercontent.com/bataa7/cad-toolkit/main/version.json",
     
     # 配置文件路径
     "config_file": "update_config.json",
