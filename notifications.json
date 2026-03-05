@@ -1,20 +1,18 @@
 {
   "notifications": [
     {
-      "id": "1",
+      "id": "notif_001",
       "title": "欢迎使用CAD工具包",
-      "content": "感谢您使用CAD工具包！本工具提供了强大的CAD文件处理功能，包括块导出、文件读取、块创建等。如有问题请访问GitHub仓库提交Issue。",
-      "date": "2026-03-04",
-      "type": "info",
-      "priority": "normal"
+      "content": "感谢您使用CAD工具包！<br><br>主要功能：<br>• DXF文件批量处理<br>• 图块智能管理<br>• 文本快速更新<br><br>如有任何问题或建议，欢迎随时联系。",
+      "level": "info",
+      "date": "2026-03-05"
     },
     {
-      "id": "2",
-      "title": "更新说明",
-      "content": "v1.0.0 版本已发布，新增自动更新检查和消息通知功能。程序会定期检查更新，确保您使用最新版本。",
-      "date": "2026-03-04",
-      "type": "update",
-      "priority": "high"
+      "id": "notif_002",
+      "title": "版本更新提醒",
+      "content": "当前版本：v3.8<br><br>✨ 最新特性：<br>• 优化了图块处理性能<br>• 增强了文件兼容性<br>• 修复了已知问题<br><br>建议定期检查更新以获得最佳体验。",
+      "level": "success",
+      "date": "2026-03-05"
     }
   ]
 }

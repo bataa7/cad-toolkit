@@ -173,9 +173,23 @@ class NotificationFetcher(QThread):
             self.fetch_failed.emit(f"获取通知失败: {str(e)}")
     
     def _fetch_notifications(self) -> Optional[list]:
-        """从GitHub获取通知信息"""
+        """从GitHub或本地获取通知信息"""
         try:
-            # 从notifications.json获取通知
+            # 导入配置
+            from system_config import DEV_MODE
+            
+            # 如果启用了开发模式，使用本地数据
+            if DEV_MODE.get('use_local_data', False):
+                local_file = DEV_MODE.get('local_notifications', 'test_notifications.json')
+                if os.path.exists(local_file):
+                    with open(local_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        return data.get('notifications', [])
+                else:
+                    print(f"本地通知文件不存在: {local_file}")
+                    return []
+            
+            # 从GitHub获取通知
             url = f"{GITHUB_RAW_BASE}/notifications.json"
             response = requests.get(url, timeout=self.timeout)
             
