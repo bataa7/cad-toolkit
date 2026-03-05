@@ -14,7 +14,30 @@ from PyQt5.QtGui import QIcon, QFont
 from PyQt5.QtCore import Qt
 import logging
 
+try:
+    import certifi
+except Exception:
+    certifi = None
+
 logger = logging.getLogger(__name__)
+
+
+def _normalize_urls(urls):
+    if isinstance(urls, (list, tuple)):
+        return [u for u in urls if u]
+    if isinstance(urls, str) and urls:
+        return [urls]
+    return []
+
+
+def _resolve_verify(verify_value, ca_bundle):
+    if isinstance(ca_bundle, str) and ca_bundle:
+        return ca_bundle
+    if verify_value is False:
+        return False
+    if verify_value is True and certifi:
+        return certifi.where()
+    return True
 
 
 class NotificationFetcher(QThread):
@@ -22,25 +45,42 @@ class NotificationFetcher(QThread):
     notifications_received = pyqtSignal(list)
     error_occurred = pyqtSignal(str)
     
-    def __init__(self, api_url: str, timeout: int = 10):
+    def __init__(self, api_url: str, timeout: int = 10, verify=None, ca_bundle=None):
         super().__init__()
         self.api_url = api_url
         self.timeout = timeout
+        self.verify = verify
+        self.ca_bundle = ca_bundle
     
     def run(self):
         try:
-            response = requests.get(self.api_url, timeout=self.timeout)
-            response.raise_for_status()
-            data = response.json()
-            
-            if isinstance(data, dict) and 'notifications' in data:
-                notifications = data['notifications']
-            elif isinstance(data, list):
-                notifications = data
-            else:
-                notifications = []
-            
-            self.notifications_received.emit(notifications)
+            verify_value = self.verify
+            ca_bundle = self.ca_bundle
+            if verify_value is None:
+                from system_config import NOTIFICATION_CONFIG
+                verify_value = NOTIFICATION_CONFIG.get("ssl_verify", True)
+                ca_bundle = NOTIFICATION_CONFIG.get("ssl_ca_bundle", "")
+            verify = _resolve_verify(verify_value, ca_bundle)
+            urls = _normalize_urls(self.api_url)
+            errors = []
+            for url in urls:
+                try:
+                    response = requests.get(url, timeout=self.timeout, verify=verify)
+                    response.raise_for_status()
+                    data = response.json()
+                    if isinstance(data, dict) and 'notifications' in data:
+                        notifications = data['notifications']
+                    elif isinstance(data, list):
+                        notifications = data
+                    else:
+                        notifications = []
+                    self.notifications_received.emit(notifications)
+                    return
+                except Exception as e:
+                    errors.append(str(e))
+            if errors:
+                raise requests.RequestException(" | ".join(errors))
+            raise requests.RequestException("未提供有效的通知地址")
         except requests.RequestException as e:
             logger.error(f"获取通知失败: {e}")
             self.error_occurred.emit(str(e))

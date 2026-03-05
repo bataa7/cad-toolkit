@@ -4,7 +4,30 @@
 """
 import sys
 import json
+try:
+    import certifi
+except Exception:
+    certifi = None
 from update_manager import UpdateChecker, NotificationFetcher, CURRENT_VERSION, GITHUB_OWNER, GITHUB_REPO
+from system_config import NOTIFICATION_CONFIG, UPDATE_CONFIG
+
+
+def _normalize_urls(urls):
+    if isinstance(urls, (list, tuple)):
+        return [u for u in urls if u]
+    if isinstance(urls, str) and urls:
+        return [urls]
+    return []
+
+
+def _resolve_verify(verify_value, ca_bundle):
+    if isinstance(ca_bundle, str) and ca_bundle:
+        return ca_bundle
+    if verify_value is False:
+        return False
+    if verify_value is True and certifi:
+        return certifi.where()
+    return True
 
 
 def test_version_comparison():
@@ -133,16 +156,39 @@ def test_network_connection():
     try:
         import requests
         
-        # 测试GitHub连接
-        print("正在测试GitHub连接...")
-        response = requests.get("https://api.github.com", timeout=5)
-        
-        if response.status_code == 200:
-            print("✓ GitHub API连接正常")
-            return True
-        else:
-            print(f"✗ GitHub API返回状态码: {response.status_code}")
-            return False
+        notif_verify = _resolve_verify(NOTIFICATION_CONFIG.get("ssl_verify", True), NOTIFICATION_CONFIG.get("ssl_ca_bundle", ""))
+        update_verify = _resolve_verify(UPDATE_CONFIG.get("ssl_verify", True), UPDATE_CONFIG.get("ssl_ca_bundle", ""))
+
+        notif_urls = _normalize_urls(NOTIFICATION_CONFIG.get("api_url", []))
+        update_urls = _normalize_urls(UPDATE_CONFIG.get("api_url", []))
+
+        print("正在测试通知地址连接...")
+        notif_ok = False
+        for url in notif_urls:
+            try:
+                response = requests.get(url, timeout=5, verify=notif_verify)
+                if response.status_code == 200:
+                    print("✓ 通知地址连接正常")
+                    notif_ok = True
+                    break
+                print(f"✗ 通知地址返回状态码: {response.status_code}")
+            except Exception as e:
+                print(f"✗ 通知地址连接失败: {e}")
+
+        print("正在测试更新地址连接...")
+        update_ok = False
+        for url in update_urls:
+            try:
+                response = requests.get(url, timeout=5, verify=update_verify)
+                if response.status_code == 200:
+                    print("✓ 更新地址连接正常")
+                    update_ok = True
+                    break
+                print(f"✗ 更新地址返回状态码: {response.status_code}")
+            except Exception as e:
+                print(f"✗ 更新地址连接失败: {e}")
+
+        return notif_ok and update_ok
             
     except requests.RequestException as e:
         print(f"✗ 网络连接失败: {e}")

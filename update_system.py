@@ -18,7 +18,30 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt5.QtGui import QFont
 import logging
 
+try:
+    import certifi
+except Exception:
+    certifi = None
+
 logger = logging.getLogger(__name__)
+
+
+def _normalize_urls(urls):
+    if isinstance(urls, (list, tuple)):
+        return [u for u in urls if u]
+    if isinstance(urls, str) and urls:
+        return [urls]
+    return []
+
+
+def _resolve_verify(verify_value, ca_bundle):
+    if isinstance(ca_bundle, str) and ca_bundle:
+        return ca_bundle
+    if verify_value is False:
+        return False
+    if verify_value is True and certifi:
+        return certifi.where()
+    return True
 
 # 当前版本
 CURRENT_VERSION = "1.0.0"
@@ -30,23 +53,41 @@ class UpdateChecker(QThread):
     no_update = pyqtSignal()  # 无更新
     error_occurred = pyqtSignal(str)  # 错误
     
-    def __init__(self, api_url: str, current_version: str, timeout: int = 10):
+    def __init__(self, api_url: str, current_version: str, timeout: int = 10, verify=None, ca_bundle=None):
         super().__init__()
         self.api_url = api_url
         self.current_version = current_version
         self.timeout = timeout
+        self.verify = verify
+        self.ca_bundle = ca_bundle
     
     def run(self):
         try:
-            response = requests.get(self.api_url, timeout=self.timeout)
-            response.raise_for_status()
-            data = response.json()
-            
-            latest_version = data.get('version', '')
-            if self.is_newer_version(latest_version, self.current_version):
-                self.update_available.emit(data)
-            else:
-                self.no_update.emit()
+            verify_value = self.verify
+            ca_bundle = self.ca_bundle
+            if verify_value is None:
+                from system_config import UPDATE_CONFIG
+                verify_value = UPDATE_CONFIG.get("ssl_verify", True)
+                ca_bundle = UPDATE_CONFIG.get("ssl_ca_bundle", "")
+            verify = _resolve_verify(verify_value, ca_bundle)
+            urls = _normalize_urls(self.api_url)
+            errors = []
+            for url in urls:
+                try:
+                    response = requests.get(url, timeout=self.timeout, verify=verify)
+                    response.raise_for_status()
+                    data = response.json()
+                    latest_version = data.get('version', '')
+                    if self.is_newer_version(latest_version, self.current_version):
+                        self.update_available.emit(data)
+                    else:
+                        self.no_update.emit()
+                    return
+                except Exception as e:
+                    errors.append(str(e))
+            if errors:
+                raise Exception(" | ".join(errors))
+            raise Exception("未提供有效的更新地址")
         except Exception as e:
             logger.error(f"检查更新失败: {e}")
             self.error_occurred.emit(str(e))

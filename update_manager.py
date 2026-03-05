@@ -13,6 +13,11 @@ from datetime import datetime
 from typing import Optional, Dict, Tuple
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
 
+try:
+    import certifi
+except Exception:
+    certifi = None
+
 # 当前版本号
 CURRENT_VERSION = "1.0.0"
 
@@ -21,6 +26,24 @@ GITHUB_OWNER = "bataa7"  # 替换为你的GitHub用户名
 GITHUB_REPO = "cad-toolkit"     # 替换为你的仓库名
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}"
 GITHUB_RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO}/main"
+
+
+def _normalize_urls(urls):
+    if isinstance(urls, (list, tuple)):
+        return [u for u in urls if u]
+    if isinstance(urls, str) and urls:
+        return [urls]
+    return []
+
+
+def _resolve_verify(verify_value, ca_bundle):
+    if isinstance(ca_bundle, str) and ca_bundle:
+        return ca_bundle
+    if verify_value is False:
+        return False
+    if verify_value is True and certifi:
+        return certifi.where()
+    return True
 
 
 class UpdateChecker(QThread):
@@ -57,9 +80,14 @@ class UpdateChecker(QThread):
     def _fetch_version_info(self) -> Optional[Dict]:
         """从GitHub获取版本信息"""
         try:
+            from system_config import UPDATE_CONFIG
+            verify_value = UPDATE_CONFIG.get("ssl_verify", True)
+            ca_bundle = UPDATE_CONFIG.get("ssl_ca_bundle", "")
+            verify = _resolve_verify(verify_value, ca_bundle)
+
             # 尝试从GitHub Releases获取最新版本
             url = f"{GITHUB_API_BASE}/releases/latest"
-            response = requests.get(url, timeout=self.timeout)
+            response = requests.get(url, timeout=self.timeout, verify=verify)
             
             if response.status_code == 200:
                 release_data = response.json()
@@ -72,11 +100,18 @@ class UpdateChecker(QThread):
                 }
             
             # 如果没有Releases，尝试从version.json获取
-            url = f"{GITHUB_RAW_BASE}/version.json"
-            response = requests.get(url, timeout=self.timeout)
-            
-            if response.status_code == 200:
-                return response.json()
+            urls = [
+                f"{GITHUB_RAW_BASE}/version.json",
+                f"https://cdn.jsdelivr.net/gh/{GITHUB_OWNER}/{GITHUB_REPO}@main/version.json",
+            ]
+            errors = []
+            for url in _normalize_urls(urls):
+                try:
+                    response = requests.get(url, timeout=self.timeout, verify=verify)
+                    if response.status_code == 200:
+                        return response.json()
+                except Exception as e:
+                    errors.append(str(e))
             
             return None
             
@@ -176,7 +211,7 @@ class NotificationFetcher(QThread):
         """从GitHub或本地获取通知信息"""
         try:
             # 导入配置
-            from system_config import DEV_MODE
+            from system_config import DEV_MODE, NOTIFICATION_CONFIG
             
             # 如果启用了开发模式，使用本地数据
             if DEV_MODE.get('use_local_data', False):
@@ -189,13 +224,22 @@ class NotificationFetcher(QThread):
                     print(f"本地通知文件不存在: {local_file}")
                     return []
             
-            # 从GitHub获取通知
-            url = f"{GITHUB_RAW_BASE}/notifications.json"
-            response = requests.get(url, timeout=self.timeout)
-            
-            if response.status_code == 200:
-                data = response.json()
-                return data.get('notifications', [])
+            verify_value = NOTIFICATION_CONFIG.get("ssl_verify", True)
+            ca_bundle = NOTIFICATION_CONFIG.get("ssl_ca_bundle", "")
+            verify = _resolve_verify(verify_value, ca_bundle)
+            urls = [
+                f"{GITHUB_RAW_BASE}/notifications.json",
+                f"https://cdn.jsdelivr.net/gh/{GITHUB_OWNER}/{GITHUB_REPO}@main/notifications.json",
+            ]
+            errors = []
+            for url in _normalize_urls(urls):
+                try:
+                    response = requests.get(url, timeout=self.timeout, verify=verify)
+                    if response.status_code == 200:
+                        data = response.json()
+                        return data.get('notifications', [])
+                except Exception as e:
+                    errors.append(str(e))
             
             return []
             

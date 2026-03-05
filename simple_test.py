@@ -3,12 +3,34 @@
 """
 import sys
 import requests
+try:
+    import certifi
+except Exception:
+    certifi = None
 from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QTextEdit
 from PyQt5.QtCore import Qt
 
 from notification_system import NotificationManager, NotificationDialog, NotificationFetcher
 from update_system import UpdateChecker, UpdateDialog
 from system_config import NOTIFICATION_CONFIG, UPDATE_CONFIG, APP_VERSION
+
+
+def _normalize_urls(urls):
+    if isinstance(urls, (list, tuple)):
+        return [u for u in urls if u]
+    if isinstance(urls, str) and urls:
+        return [urls]
+    return []
+
+
+def _resolve_verify(verify_value, ca_bundle):
+    if isinstance(ca_bundle, str) and ca_bundle:
+        return ca_bundle
+    if verify_value is False:
+        return False
+    if verify_value is True and certifi:
+        return certifi.where()
+    return True
 
 
 class SimpleTestWindow(QMainWindow):
@@ -73,24 +95,44 @@ class SimpleTestWindow(QMainWindow):
         self.log("🔍 测试API连接...")
         
         try:
-            # 测试通知API
-            r1 = requests.get(NOTIFICATION_CONFIG['api_url'], timeout=5)
-            if r1.status_code == 200:
-                data = r1.json()
-                count = len(data.get('notifications', []))
-                self.log(f"✅ 通知API正常 - 获取到 {count} 条通知")
-            else:
-                self.log(f"❌ 通知API错误 - 状态码: {r1.status_code}")
-            
-            # 测试更新API
-            r2 = requests.get(UPDATE_CONFIG['api_url'], timeout=5)
-            if r2.status_code == 200:
-                data = r2.json()
-                version = data.get('version', 'Unknown')
-                self.log(f"✅ 更新API正常 - 最新版本: {version}")
-            else:
-                self.log(f"❌ 更新API错误 - 状态码: {r2.status_code}")
-        
+            notif_verify = _resolve_verify(NOTIFICATION_CONFIG.get("ssl_verify", True), NOTIFICATION_CONFIG.get("ssl_ca_bundle", ""))
+            update_verify = _resolve_verify(UPDATE_CONFIG.get("ssl_verify", True), UPDATE_CONFIG.get("ssl_ca_bundle", ""))
+            notif_urls = _normalize_urls(NOTIFICATION_CONFIG['api_url'])
+            update_urls = _normalize_urls(UPDATE_CONFIG['api_url'])
+
+            notif_ok = False
+            for url in notif_urls:
+                try:
+                    r1 = requests.get(url, timeout=5, verify=notif_verify)
+                    if r1.status_code == 200:
+                        data = r1.json()
+                        count = len(data.get('notifications', []))
+                        self.log(f"✅ 通知API正常 - 获取到 {count} 条通知")
+                        notif_ok = True
+                        break
+                    self.log(f"❌ 通知API错误 - 状态码: {r1.status_code}")
+                except Exception as e:
+                    self.log(f"❌ 通知API错误 - {e}")
+
+            if not notif_ok and not notif_urls:
+                self.log("❌ 通知API未配置")
+
+            update_ok = False
+            for url in update_urls:
+                try:
+                    r2 = requests.get(url, timeout=5, verify=update_verify)
+                    if r2.status_code == 200:
+                        data = r2.json()
+                        version = data.get('version', 'Unknown')
+                        self.log(f"✅ 更新API正常 - 最新版本: {version}")
+                        update_ok = True
+                        break
+                    self.log(f"❌ 更新API错误 - 状态码: {r2.status_code}")
+                except Exception as e:
+                    self.log(f"❌ 更新API错误 - {e}")
+
+            if not update_ok and not update_urls:
+                self.log("❌ 更新API未配置")
         except Exception as e:
             self.log(f"❌ API连接失败: {e}")
         
@@ -101,8 +143,18 @@ class SimpleTestWindow(QMainWindow):
         self.log("📥 正在获取通知...")
         
         try:
-            response = requests.get(NOTIFICATION_CONFIG['api_url'], timeout=5)
-            response.raise_for_status()
+            verify = _resolve_verify(NOTIFICATION_CONFIG.get("ssl_verify", True), NOTIFICATION_CONFIG.get("ssl_ca_bundle", ""))
+            urls = _normalize_urls(NOTIFICATION_CONFIG['api_url'])
+            response = None
+            for url in urls:
+                try:
+                    response = requests.get(url, timeout=5, verify=verify)
+                    response.raise_for_status()
+                    break
+                except Exception:
+                    response = None
+            if response is None:
+                raise Exception("无法获取通知")
             data = response.json()
             
             notifications = data.get('notifications', [])
@@ -151,8 +203,18 @@ class SimpleTestWindow(QMainWindow):
         self.log("🔄 正在检查更新...")
         
         try:
-            response = requests.get(UPDATE_CONFIG['api_url'], timeout=5)
-            response.raise_for_status()
+            verify = _resolve_verify(UPDATE_CONFIG.get("ssl_verify", True), UPDATE_CONFIG.get("ssl_ca_bundle", ""))
+            urls = _normalize_urls(UPDATE_CONFIG['api_url'])
+            response = None
+            for url in urls:
+                try:
+                    response = requests.get(url, timeout=5, verify=verify)
+                    response.raise_for_status()
+                    break
+                except Exception:
+                    response = None
+            if response is None:
+                raise Exception("无法检查更新")
             update_info = response.json()
             
             latest_version = update_info.get('version', '')
