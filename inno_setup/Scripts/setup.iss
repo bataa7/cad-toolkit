@@ -40,12 +40,10 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 [Files]
 Source: "..\Files\CADToolkit\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\Files\启动主程序.bat"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\Files\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\Files\CAD工具包使用说明.md"; DestDir: "{app}"; Flags: ignoreversion
+
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\使用说明"; Filename: "{app}\CAD工具包使用说明.md"
 Name: "{group}\卸载 {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
