@@ -42,7 +42,8 @@ UPDATE_CONFIG = {
 # 开发模式配置（用于测试）
 DEV_MODE = {
     # 使用本地测试数据
-    "use_local_data": True,
+    "use_local_data": False,
+
     
     # 本地通知数据文件
     "local_notifications": "test_notifications.json",
