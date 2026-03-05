@@ -18,6 +18,27 @@ if not exist "%INNO_PATH%" (
 )
 
 echo [信息] 找到 Inno Setup 编译器
+echo [INFO] Sync CADToolkit package folder...
+echo.
+
+if not exist "..\dist\CADToolkit\CADToolkit.exe" (
+    echo [错误] 未找到 ..\dist\CADToolkit\CADToolkit.exe
+    echo 请先在项目根目录完成文件夹模式打包
+    echo.
+    pause
+    exit /b 1
+)
+
+if exist "Files\CADToolkit" rmdir /s /q "Files\CADToolkit"
+xcopy "..\dist\CADToolkit" "Files\CADToolkit\" /e /i /y >nul
+
+if errorlevel 1 (
+    echo [错误] 同步 CADToolkit 文件失败
+    echo.
+    pause
+    exit /b 1
+)
+
 echo [信息] 开始编译安装程序...
 echo.
 
@@ -28,7 +49,7 @@ if %ERRORLEVEL% EQU 0 (
     echo ====================================
     echo [成功] 安装程序编译完成！
     echo ====================================
-    echo 输出位置: Output\CAD工具包安装程序_v3.0.exe
+    echo 输出位置: Output\CADToolkit安装程序_v3.8.exe
     echo.
     start "" "Output"
 ) else (

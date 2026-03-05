@@ -7,7 +7,7 @@ inno_setup/
 ├── Scripts/          # 安装脚本
 │   └── setup.iss    # Inno Setup 配置文件
 ├── Files/           # 需要打包的文件
-│   ├── CAD工具包.exe
+│   ├── CADToolkit\
 │   ├── 启动主程序.bat
 │   ├── README.md
 │   └── CAD工具包使用说明.md
@@ -27,7 +27,7 @@ inno_setup/
 ### 2. 准备文件
 
 确保以下文件已复制到 `Files/` 目录：
-- ✓ CAD工具包.exe
+- ✓ CADToolkit\（包含 CADToolkit.exe 与 _internal）
 - ✓ 启动主程序.bat
 - ✓ README.md
 - ✓ CAD工具包使用说明.md
@@ -49,7 +49,7 @@ inno_setup/
 
 编译成功后，在 `Output/` 目录下会生成：
 ```
-CAD工具包安装程序_v3.0.exe
+CADToolkit安装程序_v3.8.exe
 ```
 
 ## 安装程序特性

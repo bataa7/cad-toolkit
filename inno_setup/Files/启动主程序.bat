@@ -1,13 +1,14 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo 启动 CAD工具包
+echo 启动 CADToolkit
 echo ========================================
 echo.
-echo 正在启动主程序...
+echo 正在启动安装版主程序...
 echo.
 
-python cad_toolkit_gui.py
+set "APP_DIR=%~dp0"
+start "" "%APP_DIR%CADToolkit.exe"
 
 if errorlevel 1 (
     echo.

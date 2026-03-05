@@ -9,8 +9,7 @@ def resource_path(relative_path):
     except Exception:
         base_path = os.path.abspath(".")
 
-    path = os.path.join(base_path, relative_path)
-    # Replace backslashes with forward slashes for QSS/CSS compatibility
+    path = os.path.abspath(os.path.join(base_path, relative_path))
     return path.replace('\\', '/')
 
 def get_modern_dark_style():
@@ -268,7 +267,7 @@ def get_modern_dark_style():
     }
     QCheckBox::indicator:checked {
         border-color: #29b6f6;
-        image: url(%s);
+        image: url("%s");
     }
     QCheckBox::indicator:checked:hover {
         border-color: #4fc3f7;
@@ -546,7 +545,7 @@ def get_modern_light_style():
     }
     QCheckBox::indicator:checked {
         border-color: #0277bd;
-        image: url(%s);
+        image: url("%s");
     }
     QCheckBox::indicator:checked:hover {
         border-color: #01579b;
