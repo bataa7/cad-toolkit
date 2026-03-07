@@ -1,7 +1,7 @@
 {
-  "version": "1.0.0",
-  "description": "CAD工具包 v1.0.0\n\n功能特性:\n- 块批量导出\n- CAD文件读取\n- CAD块创建\n- Excel数据处理\n- 自动更新检查\n- 消息通知系统",
-  "release_date": "2026-03-04",
+  "version": "1.0.1",
+  "description": "CAD工具包 v1.0.1\n\n本次更新:\n- 修复界面布局重复挂载导致的Qt警告\n- 优化更新检查容错，Releases失败后自动回退到version.json\n- 默认启用SSL证书校验，提升更新与通知链路安全性\n- 完成主程序诊断与回归验证",
+  "release_date": "2026-03-07",
   "download_url": "https://github.com/bataa7/cad-toolkit/releases/latest",
   "min_version": "1.0.0"
 }

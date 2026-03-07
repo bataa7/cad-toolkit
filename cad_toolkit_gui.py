@@ -1364,7 +1364,6 @@ class BlockFinderTab(QWidget):
 
         settings_layout.addLayout(layout_opts)
         settings_layout.addLayout(text_strategy_layout)
-        settings_layout.addLayout(attrib_layout)
         settings_layout.addLayout(cleanup_layout)
         settings_layout.addLayout(btn_layout)
         settings_group.setLayout(settings_layout)

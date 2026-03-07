@@ -13,6 +13,20 @@
 - 多语言界面
 - 离线模式
 
+## [1.0.1] - 2026-03-07
+
+### 修复
+- 🐛 修复块筛寻与合并页的布局重复挂载问题，消除 `QLayout::addChildLayout` 警告
+- 🐛 修复更新检查在 GitHub Releases 请求失败时未回退的问题，确保继续尝试 version.json
+
+### 安全
+- 🔒 通知与更新请求默认启用 SSL 证书校验，降低中间人风险
+
+### 验证
+- ✅ 通过 `python -m unittest discover -p "test_*.py"` 回归测试
+- ✅ 通过 `python test_update_system.py` 更新链路测试
+- ✅ 通过 `python diagnose.py` 主程序诊断
+
 ## [1.0.0] - 2026-03-04
 
 ### 新增

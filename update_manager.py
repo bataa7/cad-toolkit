@@ -19,7 +19,7 @@ except Exception:
     certifi = None
 
 # 当前版本号
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "1.0.1"
 
 # GitHub配置
 GITHUB_OWNER = "bataa7"  # 替换为你的GitHub用户名
@@ -86,18 +86,21 @@ class UpdateChecker(QThread):
             verify = _resolve_verify(verify_value, ca_bundle)
 
             # 尝试从GitHub Releases获取最新版本
-            url = f"{GITHUB_API_BASE}/releases/latest"
-            response = requests.get(url, timeout=self.timeout, verify=verify)
-            
-            if response.status_code == 200:
-                release_data = response.json()
-                return {
-                    'version': release_data.get('tag_name', '').lstrip('v'),
-                    'description': release_data.get('body', ''),
-                    'download_url': release_data.get('html_url', ''),
-                    'published_at': release_data.get('published_at', ''),
-                    'assets': release_data.get('assets', [])
-                }
+            try:
+                url = f"{GITHUB_API_BASE}/releases/latest"
+                response = requests.get(url, timeout=self.timeout, verify=verify)
+                
+                if response.status_code == 200:
+                    release_data = response.json()
+                    return {
+                        'version': release_data.get('tag_name', '').lstrip('v'),
+                        'description': release_data.get('body', ''),
+                        'download_url': release_data.get('html_url', ''),
+                        'published_at': release_data.get('published_at', ''),
+                        'assets': release_data.get('assets', [])
+                    }
+            except requests.RequestException:
+                pass
             
             # 如果没有Releases，尝试从version.json获取
             urls = [

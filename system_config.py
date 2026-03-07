@@ -22,7 +22,7 @@ NOTIFICATION_CONFIG = {
     
     # 是否启用
     "enabled": True,  # 启用通知功能
-    "ssl_verify": False,
+    "ssl_verify": True,
     "ssl_ca_bundle": "",
 }
 
@@ -45,7 +45,7 @@ UPDATE_CONFIG = {
     
     # 是否启用
     "enabled": True,
-    "ssl_verify": False,
+    "ssl_verify": True,
     "ssl_ca_bundle": "",
 }
 
