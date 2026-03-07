@@ -19,7 +19,7 @@ except Exception:
     certifi = None
 
 # 当前版本号
-CURRENT_VERSION = "1.0.1"
+CURRENT_VERSION = "3.8.1"
 
 # GitHub配置
 GITHUB_OWNER = "bataa7"  # 替换为你的GitHub用户名

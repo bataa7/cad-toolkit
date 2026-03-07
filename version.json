@@ -1,7 +1,7 @@
 {
-  "version": "1.0.1",
-  "description": "CAD工具包 v1.0.1\n\n本次更新:\n- 修复界面布局重复挂载导致的Qt警告\n- 优化更新检查容错，Releases失败后自动回退到version.json\n- 默认启用SSL证书校验，提升更新与通知链路安全性\n- 完成主程序诊断与回归验证",
+  "version": "3.8.1",
+  "description": "CAD工具包 v3.8.1\n\n本次更新:\n- 修复界面布局重复挂载导致的Qt警告\n- 优化更新检查容错，Releases失败后自动回退到version.json\n- 默认启用SSL证书校验，提升更新与通知链路安全性\n- 完成主程序诊断与回归验证",
   "release_date": "2026-03-07",
   "download_url": "https://github.com/bataa7/cad-toolkit/releases/latest",
-  "min_version": "1.0.0"
+  "min_version": "3.8.0"
 }
