@@ -12,10 +12,10 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from PyQt5.QtCore import QThread, pyqtSignal, Qt
+from PyQt5.QtCore import QThread, pyqtSignal, Qt, QUrl
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QProgressBar, QTextEdit, QMessageBox)
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QDesktopServices
 import logging
 
 try:
@@ -379,7 +379,7 @@ class UpdateDialog(QDialog):
         self.changelog_text = QTextEdit()
         self.changelog_text.setReadOnly(True)
         self.changelog_text.setMaximumHeight(150)
-        changelog = self.update_info.get('changelog', '暂无更新说明')
+        changelog = self.update_info.get('changelog') or self.update_info.get('description') or '暂无更新说明'
         self.changelog_text.setPlainText(changelog)
         layout.addWidget(self.changelog_text)
         
@@ -421,6 +421,27 @@ class UpdateDialog(QDialog):
     
     def start_update(self):
         """开始更新"""
+        patch_files = self.update_info.get('patch_files', [])
+        full_package = self.update_info.get('full_package') or {}
+        has_incremental = bool(patch_files)
+        has_full_package = isinstance(full_package, dict) and bool(full_package.get('url'))
+        manual_download_url = self.update_info.get('download_url', '')
+
+        if not has_incremental and not has_full_package:
+            if manual_download_url:
+                opened = QDesktopServices.openUrl(QUrl(manual_download_url))
+                if opened:
+                    QMessageBox.information(
+                        self,
+                        "手动更新",
+                        "当前版本使用手动更新模式，已为你打开下载页面，请下载并安装最新版本。"
+                    )
+                    self.accept()
+                    return
+            QMessageBox.critical(self, "更新失败", "更新信息不完整，缺少可下载的更新包信息。")
+            self.reject()
+            return
+
         self.update_btn.setEnabled(False)
         self.later_btn.setEnabled(False)
         self.skip_btn.setEnabled(False)

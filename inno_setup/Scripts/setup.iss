@@ -2,7 +2,7 @@
 ; 编码: UTF-8
 
 #define MyAppName "CADToolkit"
-#define MyAppVersion "3.8"
+#define MyAppVersion "3.8.1"
 #define MyAppPublisher "刘延波"
 #define MyAppExeName "CADToolkit.exe"
 

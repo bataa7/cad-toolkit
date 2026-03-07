@@ -462,7 +462,7 @@ class BlockCreator:
             
     def _clear_existing_blocks(self, doc: "ezdxf.document.Drawing"):
         """
-        清理文档中现有的块定义，保留标准块
+        清理文档中现有的块定义，保留标准块和被引用的块
         
         参数:
         doc: DXF文档对象
@@ -470,19 +470,44 @@ class BlockCreator:
         # 保留的标准块列表
         standard_blocks = ['*Model_Space', '*Paper_Space', '*Paper_Space0']
         
+        # 1. 收集所有块引用计数
+        block_references = set()
+        
+        # 检查模型空间
+        if doc.modelspace():
+            for entity in doc.modelspace():
+                if entity.dxftype() == 'INSERT':
+                    block_references.add(entity.dxf.name)
+        
+        # 检查布局空间
+        for layout in doc.layouts:
+            for entity in layout:
+                if entity.dxftype() == 'INSERT':
+                    block_references.add(entity.dxf.name)
+                    
+        # 检查块定义中的嵌套引用
+        for block in doc.blocks:
+            for entity in block:
+                if entity.dxftype() == 'INSERT':
+                    block_references.add(entity.dxf.name)
+
         # 需要删除的块名列表
         blocks_to_delete = []
         
         # 收集需要删除的块名
         for block in doc.blocks:
             if block.name not in standard_blocks:
-                blocks_to_delete.append(block.name)
+                # 只有未被引用的块才会被删除
+                if block.name not in block_references:
+                    blocks_to_delete.append(block.name)
+                else:
+                    logger.info(f"跳过被引用的块: {block.name}")
         
         # 删除收集的块
         for block_name in blocks_to_delete:
             try:
                 del doc.blocks[block_name]
-                logger.info(f"已删除现有块: {block_name}")
+                logger.info(f"已删除未使用的块: {block_name}")
             except Exception as e:
                 logger.warning(f"删除块 {block_name} 时出错: {e}")
 
