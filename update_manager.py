@@ -153,11 +153,13 @@ class UpdateDownloader(QThread):
     download_complete = pyqtSignal(str)  # 下载完成，返回文件路径
     download_failed = pyqtSignal(str)  # 下载失败
     
-    def __init__(self, download_url: str, file_name: str):
+    def __init__(self, download_url: str, file_name: str, verify=None, ca_bundle=None):
         super().__init__()
         self.download_url = download_url
         self.file_name = file_name
         self.save_path = None
+        self.verify = verify
+        self.ca_bundle = ca_bundle
     
     def run(self):
         """执行下载"""
@@ -165,9 +167,20 @@ class UpdateDownloader(QThread):
             # 创建临时目录
             temp_dir = tempfile.mkdtemp(prefix='cad_toolkit_update_')
             self.save_path = os.path.join(temp_dir, self.file_name)
+            parent_dir = os.path.dirname(self.save_path)
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
             
             # 下载文件
-            response = requests.get(self.download_url, stream=True, timeout=30)
+            verify_value = self.verify
+            ca_bundle = self.ca_bundle
+            if verify_value is None:
+                from system_config import UPDATE_CONFIG
+                verify_value = UPDATE_CONFIG.get("ssl_verify", True)
+                ca_bundle = UPDATE_CONFIG.get("ssl_ca_bundle", "")
+            verify = _resolve_verify(verify_value, ca_bundle)
+
+            response = requests.get(self.download_url, stream=True, timeout=30, verify=verify)
             response.raise_for_status()
             
             total_size = int(response.headers.get('content-length', 0))

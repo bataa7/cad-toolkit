@@ -98,6 +98,9 @@ class UpdateChecker(QThread):
         try:
             latest_parts = [int(x) for x in latest.split('.')]
             current_parts = [int(x) for x in current.split('.')]
+            max_len = max(len(latest_parts), len(current_parts))
+            latest_parts.extend([0] * (max_len - len(latest_parts)))
+            current_parts.extend([0] * (max_len - len(current_parts)))
             return latest_parts > current_parts
         except:
             return False
@@ -109,11 +112,13 @@ class UpdateDownloader(QThread):
     download_completed = pyqtSignal(str)  # 下载完成，返回文件路径
     error_occurred = pyqtSignal(str)
     
-    def __init__(self, update_info: dict, download_dir: str):
+    def __init__(self, update_info: dict, download_dir: str, verify=None, ca_bundle=None):
         super().__init__()
         self.update_info = update_info
         self.download_dir = download_dir
         self.cancelled = False
+        self.verify = verify
+        self.ca_bundle = ca_bundle
     
     def cancel(self):
         """取消下载"""
@@ -177,7 +182,19 @@ class UpdateDownloader(QThread):
     
     def download_file(self, url: str, local_path: str, expected_hash: str = ''):
         """下载单个文件"""
-        response = requests.get(url, stream=True, timeout=30)
+        verify_value = self.verify
+        ca_bundle = self.ca_bundle
+        if verify_value is None:
+            from system_config import UPDATE_CONFIG
+            verify_value = UPDATE_CONFIG.get("ssl_verify", True)
+            ca_bundle = UPDATE_CONFIG.get("ssl_ca_bundle", "")
+        verify = _resolve_verify(verify_value, ca_bundle)
+
+        parent_dir = os.path.dirname(local_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+
+        response = requests.get(url, stream=True, timeout=30, verify=verify)
         response.raise_for_status()
         
         total_size = int(response.headers.get('content-length', 0))
@@ -451,7 +468,7 @@ class UpdateDialog(QDialog):
         self.status_label.setText("正在下载更新...")
         
         # 创建下载目录
-        download_dir = os.path.join(tempfile.gettempdir(), 'cad_toolkit_update')
+        download_dir = tempfile.mkdtemp(prefix='cad_toolkit_update_')
         
         # 开始下载
         self.downloader = UpdateDownloader(self.update_info, download_dir)
@@ -501,7 +518,9 @@ class UpdateDialog(QDialog):
     def skip_version(self):
         """跳过此版本"""
         # 保存跳过的版本号
-        config_file = "update_config.json"
+        from system_config import UPDATE_CONFIG
+
+        config_file = UPDATE_CONFIG.get("config_file", "update_config.json")
         try:
             config = {}
             if os.path.exists(config_file):

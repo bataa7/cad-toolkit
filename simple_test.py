@@ -243,6 +243,9 @@ class SimpleTestWindow(QMainWindow):
         try:
             latest_parts = [int(x) for x in latest.split('.')]
             current_parts = [int(x) for x in current.split('.')]
+            max_len = max(len(latest_parts), len(current_parts))
+            latest_parts.extend([0] * (max_len - len(latest_parts)))
+            current_parts.extend([0] * (max_len - len(current_parts)))
             return latest_parts > current_parts
         except:
             return False
