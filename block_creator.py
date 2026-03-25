@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING
+from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING, Set
 
 # 仅在类型检查时导入ezdxf，运行时延迟导入
 if TYPE_CHECKING:
@@ -24,6 +24,164 @@ class BlockCreator:
         # 延迟导入ExcelReader
         from excel_reader import ExcelReader
         self.excel_reader = ExcelReader()
+
+    def _make_unique_block_name(self, doc: "ezdxf.document.Drawing", desired_name: str) -> str:
+        """
+        为新建块分配一个不会与现有块冲突的名称。
+
+        如果目标名称可用，则直接返回目标名称；否则追加稳定后缀。
+        """
+        if desired_name not in doc.blocks:
+            return desired_name
+
+        counter = 1
+        while True:
+            candidate = f"{desired_name}_NEW{counter}"
+            if candidate not in doc.blocks:
+                logger.warning(
+                    f"块名 '{desired_name}' 已存在，临时使用 '{candidate}' 创建新块"
+                )
+                return candidate
+            counter += 1
+
+    def _iter_block_references_from_entity(
+        self, doc: "ezdxf.document.Drawing", entity: "Any"
+    ) -> Set[str]:
+        """
+        提取实体直接引用到的块名。
+
+        这里除了普通 INSERT，也兼容 DIMENSION 的 geometry 匿名块，以及
+        少量通过 block_record_handle 间接引用块定义的实体。
+        """
+        block_names: Set[str] = set()
+
+        def add_block_name(name: Any) -> None:
+            if isinstance(name, str) and name and name in doc.blocks:
+                block_names.add(name)
+
+        try:
+            if entity.dxftype() == "INSERT":
+                add_block_name(entity.dxf.name)
+
+            add_block_name(getattr(entity.dxf, "geometry", None))
+            add_block_name(getattr(entity.dxf, "block_name", None))
+
+            block_record_handle = getattr(entity.dxf, "block_record_handle", None)
+            if block_record_handle:
+                block_record = doc.entitydb.get(block_record_handle)
+                block_record_name = getattr(getattr(block_record, "dxf", None), "name", None)
+                add_block_name(block_record_name)
+        except Exception as e:
+            logger.debug(f"提取实体块引用时出错: {e}")
+
+        return block_names
+
+    def _collect_reachable_blocks(
+        self,
+        doc: "ezdxf.document.Drawing",
+        root_block_names: Optional[Set[str]] = None,
+    ) -> Set[str]:
+        """
+        从模型空间/布局空间的根实体出发，递归收集可达块定义。
+        """
+        reachable: Set[str] = set()
+        pending: List[str] = list(root_block_names or set())
+
+        def collect_from_entities(entities) -> None:
+            for entity in entities:
+                pending.extend(self._iter_block_references_from_entity(doc, entity))
+
+        collect_from_entities(doc.modelspace())
+        for layout in doc.layouts:
+            if getattr(layout, "name", "").lower() == "model":
+                continue
+            collect_from_entities(layout)
+
+        while pending:
+            block_name = pending.pop()
+            if block_name in reachable or block_name not in doc.blocks:
+                continue
+
+            reachable.add(block_name)
+            block = doc.blocks.get(block_name)
+            if block is None:
+                continue
+
+            for entity in block:
+                pending.extend(self._iter_block_references_from_entity(doc, entity))
+
+        return reachable
+
+    def _purge_unreachable_blocks(
+        self,
+        doc: "ezdxf.document.Drawing",
+        keep_block_names: Optional[Set[str]] = None,
+    ) -> List[str]:
+        """
+        删除从模型空间/布局空间不可达的块定义。
+
+        使用 safe delete 迭代删除，优先保证不会误删仍在用或内部特殊块。
+        """
+        reachable = self._collect_reachable_blocks(doc, root_block_names=keep_block_names)
+        candidate_names = {
+            block.name
+            for block in doc.blocks
+            if not block.is_any_layout and block.name not in reachable
+        }
+
+        deleted_names: List[str] = []
+        while candidate_names:
+            progress = False
+            for block_name in sorted(list(candidate_names)):
+                try:
+                    doc.blocks.delete_block(block_name, safe=True)
+                    candidate_names.remove(block_name)
+                    deleted_names.append(block_name)
+                    progress = True
+                    logger.info(f"已删除不可达块: {block_name}")
+                except Exception as e:
+                    logger.debug(f"暂时无法删除块 '{block_name}': {e}")
+
+            if not progress:
+                break
+
+        if candidate_names:
+            logger.info(
+                "以下块未被清理，通常是因为它们属于特殊内部块或仍被隐式引用: "
+                + ", ".join(sorted(candidate_names))
+            )
+
+        return deleted_names
+
+    def _try_restore_block_name(
+        self,
+        doc: "ezdxf.document.Drawing",
+        current_name: str,
+        desired_name: str,
+        blockref: "Any",
+    ) -> str:
+        """
+        在清理完成后，尝试把临时块名恢复为用户期望的块名。
+        """
+        if current_name == desired_name:
+            return current_name
+
+        if desired_name in doc.blocks:
+            logger.warning(
+                f"清理后块名 '{desired_name}' 仍被占用，保留生成块名 '{current_name}'"
+            )
+            return current_name
+
+        try:
+            doc.blocks.rename_block(current_name, desired_name)
+            blockref.dxf.name = desired_name
+            logger.info(f"已将临时块名 '{current_name}' 恢复为 '{desired_name}'")
+            return desired_name
+        except Exception as e:
+            logger.warning(
+                f"尝试将临时块名 '{current_name}' 恢复为 '{desired_name}' 时出错: {e}"
+            )
+            return current_name
     
     def _calculate_insertion_point(self, entities: List["Any"]) -> Tuple[float, float, float]:
         """
@@ -88,10 +246,9 @@ class BlockCreator:
             return None
         
         try:
-            # 如果块名已存在，直接返回已有块名，不再新建新块
             if block_name in doc.blocks:
-                logger.info(f"块名已存在，直接使用已有块: {block_name}")
-                return block_name
+                logger.error(f"块名 '{block_name}' 已存在，无法直接创建同名新块")
+                return None
             # 创建新块
             block = doc.blocks.new(name=block_name)
             logger.info(f"创建单个块: {block_name}")
@@ -142,11 +299,11 @@ class BlockCreator:
     
     def replace_entities_with_block(self, doc: "ezdxf.document.Drawing", 
                                    modelspace: "ezdxf.layouts.Modelspace", 
-                                   entities: List["Any"], block_name: str,
-                                   insertion_point: Optional[Tuple[float, float, float]] = None,
-                                   write_material_thickness_attrib: bool = False,
-                                   write_id_drawing_name_attrib: bool = False,
-                                   attributes_data: Optional[Dict] = None) -> bool:
+                                    entities: List["Any"], block_name: str,
+                                    insertion_point: Optional[Tuple[float, float, float]] = None,
+                                    write_material_thickness_attrib: bool = False,
+                                    write_id_drawing_name_attrib: bool = False,
+                                    attributes_data: Optional[Dict] = None) -> Optional[Tuple[str, Any]]:
         """
         将所有实体替换为一个块引用
         
@@ -161,7 +318,7 @@ class BlockCreator:
         attributes_data: 属性数据字典（通常来自Excel）
         
         返回:
-        bool: 操作是否成功
+        tuple[str, Any]: (创建后的块名, 新插入的块引用)
         """
         try:
             # 计算插入点
@@ -327,11 +484,11 @@ class BlockCreator:
                 blockref.add_attrib(tag='名称', text=str(name_val), insert=(insertion_point[0], insertion_point[1]-80), dxfattribs={'height': 10, 'style': 'Standard'})
                 blockref.add_attrib(tag='总数量', text=str(total_qty_val), insert=(insertion_point[0], insertion_point[1]-100), dxfattribs={'height': 10, 'style': 'Standard'})
 
-            return True
+            return created_block_name, blockref
             
         except Exception as e:
             logger.error(f"替换实体为块时出错: {e}")
-            return False
+            return None
     
     def process_cad_file(self, input_file: str, output_file: Optional[str] = None, 
                         text_strategy: str = 'first_valid', 
@@ -364,10 +521,6 @@ class BlockCreator:
         # 加载文件
         if not self.cad_reader.load_file():
             return None
-        
-        # 可选：清理现有的块定义（保留标准块）
-        if clear_existing_blocks:
-            self._clear_existing_blocks(self.cad_reader.doc)
         
         # 获取文本对象
         text_objects = self.cad_reader.get_text_objects()
@@ -419,21 +572,42 @@ class BlockCreator:
             logger.warning("未找到几何实体，无法创建块")
             return None
 
-        logger.info(f"将使用所有几何实体创建单个块: {block_name}")
+        working_block_name = self._make_unique_block_name(self.cad_reader.doc, block_name)
+        logger.info(f"将使用所有几何实体创建单个块: {working_block_name}")
 
         # 替换所有实体为单个块
-        success = self.replace_entities_with_block(
+        replacement_result = self.replace_entities_with_block(
             self.cad_reader.doc,
             self.cad_reader.modelspace,
             geometric_entities,
-            block_name,
+            working_block_name,
             write_material_thickness_attrib=write_material_thickness_attrib,
             write_id_drawing_name_attrib=write_id_drawing_name_attrib,
             attributes_data=row_data
         )
-        if not success:
+        if not replacement_result:
             logger.error("替换实体为块失败")
             return None
+
+        final_block_name, blockref = replacement_result
+
+        if clear_existing_blocks:
+            deleted_blocks = self._purge_unreachable_blocks(
+                self.cad_reader.doc,
+                keep_block_names={final_block_name},
+            )
+            if deleted_blocks:
+                logger.info(f"本次共清理 {len(deleted_blocks)} 个不可达块")
+            final_block_name = self._try_restore_block_name(
+                self.cad_reader.doc,
+                final_block_name,
+                block_name,
+                blockref,
+            )
+        elif final_block_name != block_name:
+            logger.warning(
+                f"目标块名 '{block_name}' 已存在且未启用清理，输出将保留块名 '{final_block_name}'"
+            )
         
         # 确定输出文件名
         if output_file is None:
@@ -442,7 +616,7 @@ class BlockCreator:
             ext = os.path.splitext(input_file)[1]
             
             # 生成安全的文件名（限制长度并移除不允许的字符）
-            safe_block_name = block_name[:50]  # 限制长度
+            safe_block_name = final_block_name[:50]  # 限制长度
             # 移除不允许的文件名字符
             import re
             safe_block_name = re.sub(r'[<>"/\\|?*]', '_', safe_block_name)
@@ -462,54 +636,12 @@ class BlockCreator:
             
     def _clear_existing_blocks(self, doc: "ezdxf.document.Drawing"):
         """
-        清理文档中现有的块定义，保留标准块和被引用的块
+        兼容旧接口：按根可达性清理不可达块定义。
         
         参数:
         doc: DXF文档对象
         """
-        # 保留的标准块列表
-        standard_blocks = ['*Model_Space', '*Paper_Space', '*Paper_Space0']
-        
-        # 1. 收集所有块引用计数
-        block_references = set()
-        
-        # 检查模型空间
-        if doc.modelspace():
-            for entity in doc.modelspace():
-                if entity.dxftype() == 'INSERT':
-                    block_references.add(entity.dxf.name)
-        
-        # 检查布局空间
-        for layout in doc.layouts:
-            for entity in layout:
-                if entity.dxftype() == 'INSERT':
-                    block_references.add(entity.dxf.name)
-                    
-        # 检查块定义中的嵌套引用
-        for block in doc.blocks:
-            for entity in block:
-                if entity.dxftype() == 'INSERT':
-                    block_references.add(entity.dxf.name)
-
-        # 需要删除的块名列表
-        blocks_to_delete = []
-        
-        # 收集需要删除的块名
-        for block in doc.blocks:
-            if block.name not in standard_blocks:
-                # 只有未被引用的块才会被删除
-                if block.name not in block_references:
-                    blocks_to_delete.append(block.name)
-                else:
-                    logger.info(f"跳过被引用的块: {block.name}")
-        
-        # 删除收集的块
-        for block_name in blocks_to_delete:
-            try:
-                del doc.blocks[block_name]
-                logger.info(f"已删除未使用的块: {block_name}")
-            except Exception as e:
-                logger.warning(f"删除块 {block_name} 时出错: {e}")
+        self._purge_unreachable_blocks(doc)
 
 # 示例用法
 if __name__ == "__main__":

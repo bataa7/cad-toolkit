@@ -1,32 +1,56 @@
 {
-  "latest_version": "3.0.0",
-  "release_date": "2026-03-04",
-  "download_url": "CAD工具包.exe",
+  "latest_version": "3.8.2",
+  "release_date": "2026-03-25",
+  "download_url": "CADToolkit安装程序_v3.8.1.exe",
   "file_size": "52428800",
   "force_update": false,
   "minimum_version": "2.5.0",
-  "update_notes": "建议所有用户更新到最新版本以获得最佳性能和新功能",
+  "update_notes": "建议更新到 v3.8.2，以获得块创建清理、块筛寻合并一致性和 2D Nesting 导出稳定性修复。",
   "messages": [
     {
-      "id": "welcome_3_0",
-      "title": "欢迎使用 CAD工具包 v3.0",
+      "id": "welcome_3_8_2",
+      "title": "CAD工具包 v3.8.2 已发布",
       "icon": "🎉",
-      "content": "<p>感谢使用 CAD工具包！</p><p>v3.0 版本带来了全新的界面设计和强大的自动排版功能。</p><p>如需帮助，请查看使用文档或访问我们的网站。</p>",
-      "action_text": "查看新功能",
-      "action_url": "http://localhost:8000/#features",
-      "expire_date": "2026-04-04"
+      "content": "<p>本次版本聚焦稳定性与结果一致性。</p><p>已修复块创建清理、块筛寻合并和 2D Nesting 导出中的关键问题。</p>",
+      "action_text": "查看更新",
+      "action_url": "#download",
+      "expire_date": "2026-04-25"
     },
     {
       "id": "tip_auto_nesting",
-      "title": "功能提示：自动排版",
+      "title": "功能提示：2D Nesting",
       "icon": "💡",
-      "content": "<p><b>您知道吗？</b></p><p>新版本的自动排版功能可以智能优化板材利用率，节省材料成本。</p><p>在"自动排版"选项卡中尝试这个功能吧！</p>",
-      "action_text": "了解更多",
-      "action_url": "http://localhost:8000/#docs",
-      "expire_date": "2026-05-04"
+      "content": "<p><b>现在的排版包导出更稳定。</b></p><p>重复件会自动聚合，空导出也会明确报错，方便更快定位问题。</p>",
+      "action_text": "查看说明",
+      "action_url": "#features",
+      "expire_date": "2026-05-25"
     }
   ],
   "changelog": [
+    {
+      "version": "3.8.2",
+      "date": "2026-03-25",
+      "type": "patch",
+      "changes": [
+        "修复块创建模块中“清理现有块”后的残留与同名冲突问题",
+        "修复块筛寻合并中的列识别误判，避免 material_id 被误识别成材质列",
+        "优化块筛寻合并结果，在 Excel 中新增“已合并”与“合并到标识符”说明",
+        "修复 2D Nesting 排版包生成逻辑，避免 0 导出仍提示成功",
+        "提升 2D Nesting 重复件聚合与文件命名稳定性"
+      ],
+      "download_count": 0
+    },
+    {
+      "version": "3.8.1",
+      "date": "2026-03-07",
+      "type": "patch",
+      "changes": [
+        "修复界面布局重复挂载导致的 Qt 警告",
+        "优化更新检查容错，Releases 失败后自动回退到 version.json",
+        "默认启用 SSL 证书校验，提升更新与通知链路安全性"
+      ],
+      "download_count": 0
+    },
     {
       "version": "3.0.0",
       "date": "2026-03-04",
@@ -34,38 +58,10 @@
       "changes": [
         "全新界面设计，操作更加直观",
         "新增自动排版功能，支持多板材优化",
-        "优化块筛寻算法，查找速度提升50%",
-        "支持更多DXF实体类型",
-        "修复文本编码问题，完美支持中文",
-        "新增BOM数量计算器模块",
-        "改进Excel数据匹配准确度"
+        "优化块筛寻算法，查找速度提升 50%",
+        "支持更多 DXF 实体类型"
       ],
       "download_count": 0
-    },
-    {
-      "version": "2.8.0",
-      "date": "2025-12-15",
-      "type": "minor",
-      "changes": [
-        "新增文本内容批量更改功能",
-        "优化块合并布局算法",
-        "支持按材质厚度自动分组",
-        "修复大文件处理内存溢出问题",
-        "改进进度显示和日志输出"
-      ],
-      "download_count": 156
-    },
-    {
-      "version": "2.5.0",
-      "date": "2025-09-20",
-      "type": "minor",
-      "changes": [
-        "新增块批量导出功能",
-        "支持Excel数据关联",
-        "优化文本识别准确度",
-        "修复块引用嵌套问题"
-      ],
-      "download_count": 243
     }
   ],
   "system_requirements": {
@@ -73,6 +69,5 @@
     "ram": "4GB",
     "disk_space": "100MB",
     "additional": "无需安装其他依赖"
-  },
-  "update_notes": "建议所有用户更新到最新版本以获得最佳性能和新功能"
+  }
 }

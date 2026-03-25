@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import re
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QLineEdit, QPushButton, QFileDialog, QTextEdit, 
@@ -2932,6 +2933,28 @@ class SolidEdgeNestingWorker(QThread):
         self.sheet_height = float(sheet_height)
         self.allow_rotate = bool(allow_rotate)
         self.contour_only = bool(contour_only)
+
+    @staticmethod
+    def _sanitize_nesting_component(value, fallback=""):
+        value = str(value).strip() if value is not None else ""
+
+        if value:
+            try:
+                from pypinyin import lazy_pinyin
+                value = "".join(lazy_pinyin(value))
+            except ImportError:
+                pass
+            except Exception:
+                pass
+
+        value = re.sub(r'[\\/:*?"<>|]', '_', value)
+        value = re.sub(r'\s+', '_', value)
+        value = re.sub(r'[^\x00-\x7F]+', '', value)
+        value = re.sub(r'[^a-zA-Z0-9_\-.]', '_', value)
+        value = re.sub(r'_+', '_', value).strip('_')
+
+        return value or fallback
+
     def run(self):
         try:
             self.progress.emit("开始生成2D Nesting包...")
@@ -3167,6 +3190,9 @@ class SolidEdgeNestingWorker(QThread):
                 return ss
 
             groups = {}
+            part_path_registry = {}
+            export_failures = []
+            exported_parts = 0
             idx = 0
             for e in msp:
                 try:
@@ -3278,7 +3304,7 @@ class SolidEdgeNestingWorker(QThread):
                     thick_val = normalize_thickness_str(thick_val)
                     key = (mat_val, thick_val)
                     if key not in groups:
-                        groups[key] = []
+                        groups[key] = {}
                     qty = self.default_quantity
                     qty_locked = False
                     try:
@@ -3301,41 +3327,8 @@ class SolidEdgeNestingWorker(QThread):
                         pass
                     idx += 1
 
-                    # Define sanitization helper
-                    def sanitize_fn(s):
-                        s = str(s)
-                        if not s:
-                            return ""
-                            
-                        # Try to convert Chinese to Pinyin
-                        try:
-                            from pypinyin import lazy_pinyin
-                            # Convert to pinyin list, preserving non-Chinese characters
-                            pinyin_list = lazy_pinyin(s)
-                            s = "".join(pinyin_list)
-                        except ImportError:
-                            pass
-                        except Exception:
-                            pass
-
-                        # 1. Replace invalid filesystem chars with underscore
-                        s = re.sub(r'[\\/:*?"<>|]', '_', s)
-                        # 2. Replace whitespace with underscore
-                        s = re.sub(r'\s+', '_', s)
-                        # 3. Remove non-ASCII characters (including Chinese if pinyin failed)
-                        s = re.sub(r'[^\x00-\x7F]+', '', s)
-                        # 4. Keep only alphanumeric, dash, dot, underscore
-                        s = re.sub(r'[^a-zA-Z0-9_\-.]', '_', s)
-                        # 5. Cleanup underscores
-                        s = re.sub(r'_+', '_', s).strip('_')
-                        # 6. Fallback if empty
-                        if not s:
-                            import uuid
-                            s = f"unknown_{str(uuid.uuid4())[:8]}"
-                        return s
-                        
-                    safe_mat_val = sanitize_fn(mat_val)
-                    safe_thick_val = sanitize_fn(thick_val)
+                    safe_mat_val = self._sanitize_nesting_component(mat_val, fallback="unknown_material")
+                    safe_thick_val = self._sanitize_nesting_component(thick_val, fallback="unknown_thickness")
 
                     # Collect candidate texts
                     candidate_texts = []
@@ -3451,7 +3444,7 @@ class SolidEdgeNestingWorker(QThread):
                     part_name_str = "_".join(name_parts)
                     if not part_name_str:
                         # Fallback
-                        safe_blk = sanitize_fn(blk_name)
+                        safe_blk = self._sanitize_nesting_component(blk_name, fallback=f"part_{idx}")
                         if not safe_blk.startswith('*'):
                              part_name_str = safe_blk
                         else:
@@ -3464,57 +3457,70 @@ class SolidEdgeNestingWorker(QThread):
                     use_id = attr_id if attr_id else material_id_str
                     use_name = attr_name if attr_name else part_name_str
                     use_draw = attr_draw if attr_draw else drawing_num_str
-                    
+
                     fname_parts = [
-                        sanitize_fn(thick_val),
-                        sanitize_fn(mat_val),
-                        sanitize_fn(use_id),
-                        sanitize_fn(use_name),
-                        sanitize_fn(use_draw)
+                        self._sanitize_nesting_component(thick_val),
+                        self._sanitize_nesting_component(mat_val),
+                        self._sanitize_nesting_component(use_id),
+                        self._sanitize_nesting_component(use_name),
+                        self._sanitize_nesting_component(use_draw),
                     ]
-                    
-                    final_filename = "_".join(fname_parts)
-                    if not any(p for p in fname_parts):
-                        final_filename = f"part_{idx}"
+                    fname_parts = [part for part in fname_parts if part]
+
+                    block_identity = self._sanitize_nesting_component(blk_name, fallback=f"block_{idx}")
+                    final_filename = "_".join(fname_parts) if fname_parts else block_identity
 
                     group_dir = os.path.join(self.output_dir, safe_mat_val, safe_thick_val)
                     os.makedirs(group_dir, exist_ok=True)
-                    out_path = os.path.join(group_dir, f"{final_filename}.dxf")
-                    new_doc = ezdxf.new(dxfversion='R2010')
-                    new_msp = new_doc.modelspace()
-                    if blk_name in doc.blocks:
+                    base_out_path = os.path.join(group_dir, f"{final_filename}.dxf")
+                    registered_identity = part_path_registry.get(base_out_path)
+                    if registered_identity is None:
+                        out_path = base_out_path
+                        part_path_registry[out_path] = block_identity
+                    elif registered_identity == block_identity:
+                        out_path = base_out_path
+                    else:
+                        out_path = os.path.join(group_dir, f"{final_filename}_{block_identity}.dxf")
+                        part_path_registry.setdefault(out_path, block_identity)
+
+                    if out_path not in groups[key]:
+                        if blk_name not in doc.blocks:
+                            raise ValueError(f"块定义不存在: {blk_name}")
+
+                        new_doc = ezdxf.new(dxfversion='R2010')
+                        new_msp = new_doc.modelspace()
                         blk = doc.blocks.get(blk_name)
                         sx = e.dxf.xscale if hasattr(e.dxf, 'xscale') else 1.0
                         sy = e.dxf.yscale if hasattr(e.dxf, 'yscale') else 1.0
                         rz = e.dxf.rotation if hasattr(e.dxf, 'rotation') else 0.0
-                        
+
                         # Fix: Use radians for rotation and remove translation to keep at origin
                         m = Matrix44.scale(sx, sy, 1.0) @ Matrix44.z_rotate(math.radians(rz))
-                        
+
                         def export_entities(layout, transform_matrix, target_msp):
                             for entity in layout:
                                 try:
                                     dxftype = entity.dxftype()
                                     if self.contour_only and dxftype in ('TEXT', 'MTEXT', 'DIMENSION', 'LEADER', 'MLEADER', 'POINT', 'ATTDEF'):
                                         continue
-                                        
+
                                     if dxftype == 'INSERT':
                                         # Handle nested block
                                         nested_name = entity.dxf.name
                                         if nested_name in doc.blocks:
                                             nested_blk = doc.blocks.get(nested_name)
-                                            
+
                                             # Nested transformation
                                             nsx = entity.dxf.xscale if hasattr(entity.dxf, 'xscale') else 1.0
                                             nsy = entity.dxf.yscale if hasattr(entity.dxf, 'yscale') else 1.0
                                             nsz = entity.dxf.zscale if hasattr(entity.dxf, 'zscale') else 1.0
                                             nrz = entity.dxf.rotation if hasattr(entity.dxf, 'rotation') else 0.0
                                             nins = entity.dxf.insert
-                                            
+
                                             local_m = Matrix44.scale(nsx, nsy, nsz) @ \
                                                       Matrix44.z_rotate(math.radians(nrz)) @ \
                                                       Matrix44.translate(nins[0], nins[1], nins[2])
-                                            
+
                                             combined_m = local_m @ transform_matrix
                                             export_entities(nested_blk, combined_m, target_msp)
                                     else:
@@ -3524,12 +3530,19 @@ class SolidEdgeNestingWorker(QThread):
                                         target_msp.add_entity(ce)
                                 except Exception:
                                     continue
-                        
+
                         export_entities(blk, m, new_msp)
-                    new_doc.saveas(out_path)
-                    groups[key].append((out_path, qty))
-                    self.progress.emit(f"已导出部件: {os.path.basename(out_path)} x{qty} -> {mat_val}/{thick_val}")
-                except Exception:
+                        new_doc.saveas(out_path)
+                        groups[key][out_path] = qty
+                        exported_parts += 1
+                        self.progress.emit(f"已导出部件: {os.path.basename(out_path)} x{qty} -> {mat_val}/{thick_val}")
+                    else:
+                        groups[key][out_path] += qty
+                        self.progress.emit(f"已聚合重复部件: {os.path.basename(out_path)} +{qty} -> {groups[key][out_path]}")
+                except Exception as e:
+                    detail = f"导出部件失败: 块={getattr(e, 'dxf', None) or locals().get('blk_name', 'unknown')}，原因={str(e)}"
+                    export_failures.append(detail)
+                    self.progress.emit(detail)
                     continue
             
             # Helper to sanitize folder names
@@ -3582,7 +3595,7 @@ class SolidEdgeNestingWorker(QThread):
                     with open(nest_csv, 'w', newline='', encoding='mbcs') as f:
                         writer = csv.writer(f)
                         
-                        for fn, q in items:
+                        for fn, q in items.items():
                             part_name = os.path.splitext(os.path.basename(fn))[0]
                             abs_path = os.path.abspath(fn)
                             priority = 1
@@ -3710,6 +3723,20 @@ If (-not $found) {
                         self.progress.emit(f"已完成该组排版: {mat}/{thick}")
                     except Exception as e:
                         self.progress.emit(f"启动失败 ({mat}/{thick}): {str(e)}")
+
+            if total_parts == 0:
+                message = "未导出任何部件，请检查输入DXF中的块、材质/厚度标签和部件内容。"
+                if export_failures:
+                    message += "\n首个错误: " + export_failures[0]
+                self.finished.emit(False, message)
+                return
+
+            if export_failures:
+                warning_preview = "\n".join(export_failures[:5])
+                if len(export_failures) > 5:
+                    warning_preview += f"\n... 另有 {len(export_failures) - 5} 条错误"
+                self.finished.emit(True, f"处理完成，共导出 {total_parts} 个部件\n警告信息:\n{warning_preview}")
+                return
 
             self.finished.emit(True, f"处理完成，共导出 {total_parts} 个部件")
             

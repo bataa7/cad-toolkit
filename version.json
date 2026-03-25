@@ -1,7 +1,7 @@
 {
-  "version": "3.8.1",
-  "description": "CAD工具包 v3.8.1\n\n本次更新:\n- 修复界面布局重复挂载导致的Qt警告\n- 优化更新检查容错，Releases失败后自动回退到version.json\n- 默认启用SSL证书校验，提升更新与通知链路安全性\n- 完成主程序诊断与回归验证",
-  "release_date": "2026-03-07",
+  "version": "3.8.2",
+  "description": "CAD工具包 v3.8.2\n\n本次更新:\n- 修复块创建模块中“清理现有块”后的残留与同名冲突问题\n- 优化块筛寻合并结果，修复列识别误判，并在Excel中新增“已合并”状态说明\n- 修复2D Nesting排版包生成逻辑，避免0导出仍提示成功，并提升重复件聚合与文件命名稳定性\n- 完成新增回归测试与全量测试验证",
+  "release_date": "2026-03-25",
   "download_url": "https://github.com/bataa7/cad-toolkit/releases/latest",
   "min_version": "3.8.0"
 }
