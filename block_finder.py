@@ -2,7 +2,7 @@ import re
 import os
 import logging
 import traceback
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Set
 import ezdxf
 from ezdxf.math import Matrix44
 from ezdxf.addons import Importer
@@ -171,6 +171,56 @@ class BlockFinder:
         self.cad_reader = CADReader("")
         self.text_processor = TextProcessor()
         self.text_strategy = text_strategy
+
+    def _normalize_column_label(self, label: Any) -> str:
+        """
+        规范化表头名称，尽量消除大小写、空格、连字符差异。
+        """
+        normalized = str(label).strip().lower()
+        normalized = re.sub(r"[\s\-]+", "_", normalized)
+        normalized = re.sub(r"_+", "_", normalized).strip("_")
+        return normalized
+
+    def _column_keyword_matches(self, normalized_column: str, keyword: str) -> bool:
+        """
+        判断列名是否匹配关键字。
+
+        英文关键字使用精确匹配，避免 `material` 错误匹配 `material_id`；
+        中文关键字保留包含匹配，兼容“主材质”“零件名称”等扩展表头。
+        """
+        normalized_keyword = self._normalize_column_label(keyword)
+        if not normalized_keyword:
+            return False
+
+        if re.search(r"[a-z]", normalized_keyword):
+            return normalized_column == normalized_keyword
+
+        return normalized_keyword in normalized_column
+
+    def _resolve_merged_identifier_map(
+        self,
+        merged_identifier_map: Dict[str, str],
+        visible_identifiers: Set[str],
+    ) -> Dict[str, str]:
+        """
+        将合并链路解析到最终仍然可见的代表标识符。
+        """
+        resolved_map: Dict[str, str] = {}
+
+        for identifier, representative in merged_identifier_map.items():
+            if identifier in visible_identifiers:
+                continue
+
+            current = representative
+            seen = {identifier}
+            while current in merged_identifier_map and current not in visible_identifiers and current not in seen:
+                seen.add(current)
+                current = merged_identifier_map[current]
+
+            if current in visible_identifiers:
+                resolved_map[identifier] = current
+
+        return resolved_map
     
     def load_excel(self, excel_file: str) -> Optional[pd.DataFrame]:
         """
@@ -215,11 +265,11 @@ class BlockFinder:
         column_map = {}
         
         for col in df.columns:
-            col_lower = str(col).lower()
+            normalized_col = self._normalize_column_label(col)
             for col_type, keywords in column_keywords.items():
                 if col_type not in column_map:
                     for keyword in keywords:
-                        if keyword in col_lower:
+                        if self._column_keyword_matches(normalized_col, keyword):
                             column_map[col_type] = col
                             break
         
@@ -1099,7 +1149,13 @@ class BlockFinder:
         except Exception as e:
             logger.warning(f"删除重复实体时出错: {e}")
 
-    def update_excel_with_results(self, excel_file: str, found_identifiers: List[str], output_file: str) -> bool:
+    def update_excel_with_results(
+        self,
+        excel_file: str,
+        found_identifiers: List[str],
+        output_file: str,
+        merged_identifier_map: Optional[Dict[str, str]] = None,
+    ) -> bool:
         """
         更新Excel文件，添加找到/未找到标记
 
@@ -1107,11 +1163,15 @@ class BlockFinder:
         excel_file: 原始Excel文件路径
         found_identifiers: 找到的物料ID或图号列表
         output_file: 输出Excel文件路径
+        merged_identifier_map: 被合并到代表块的标识符映射
 
         返回:
         bool: 操作是否成功
         """
         try:
+            found_identifiers = set(found_identifiers)
+            merged_identifier_map = merged_identifier_map or {}
+
             # 加载Excel文件
             df = pd.read_excel(excel_file)
             
@@ -1123,10 +1183,16 @@ class BlockFinder:
             # 添加结果列
             df['查找结果'] = '未找到'
             df['匹配类型'] = ''
+            df['合并到标识符'] = ''
             
             # 更新结果
             found_count = 0
+            merged_count = 0
             for index, row in df.iterrows():
+                row_status = '未找到'
+                match_type = ''
+                merged_to = ''
+
                 # 检查物料ID
                 if material_id_col and pd.notna(row[material_id_col]):
                     try:
@@ -1138,9 +1204,12 @@ class BlockFinder:
                     material_id = self._normalize_identifier(material_id)
                     
                     if material_id in found_identifiers:
-                        df.at[index, '查找结果'] = '已找到'
-                        df.at[index, '匹配类型'] = '物料ID'
-                        found_count += 1
+                        row_status = '已找到'
+                        match_type = '物料ID'
+                    elif material_id in merged_identifier_map:
+                        row_status = '已合并'
+                        match_type = '物料ID'
+                        merged_to = merged_identifier_map[material_id]
                 
                 # 检查图号
                 if drawing_num_col and pd.notna(row[drawing_num_col]):
@@ -1149,17 +1218,29 @@ class BlockFinder:
                     # 规范化
                     drawing_num = self._normalize_identifier(drawing_num)
                     
-                    if drawing_num in found_identifiers:
-                        # 如果已经是物料ID匹配，则不覆盖
-                        if df.at[index, '匹配类型'] != '物料ID':
-                            df.at[index, '查找结果'] = '已找到'
-                            df.at[index, '匹配类型'] = '图号'
-                            found_count += 1
+                    if row_status == '未找到':
+                        if drawing_num in found_identifiers:
+                            row_status = '已找到'
+                            match_type = '图号'
+                        elif drawing_num in merged_identifier_map:
+                            row_status = '已合并'
+                            match_type = '图号'
+                            merged_to = merged_identifier_map[drawing_num]
+
+                df.at[index, '查找结果'] = row_status
+                df.at[index, '匹配类型'] = match_type
+                df.at[index, '合并到标识符'] = merged_to
+
+                if row_status == '已找到':
+                    found_count += 1
+                elif row_status == '已合并':
+                    merged_count += 1
             
             # 保存更新后的文件
             df.to_excel(output_file, index=False)
             logger.info(f"成功更新Excel文件并保存到: {output_file}")
             logger.info(f"在Excel文件中找到 {found_count} 个匹配项")
+            logger.info(f"在Excel文件中标记了 {merged_count} 个已合并项")
             return True
         except Exception as e:
             logger.error(f"更新Excel文件时出错: {e}")
@@ -1532,7 +1613,8 @@ class BlockFinder:
             # 在所有DXF文件中搜索块
             self._log_progress(progress_callback, f"开始在 {len(dxf_files)} 个DXF文件中搜索块...")
             all_found_blocks = {}
-            processed_blocks = {}  # 用于跟踪已处理的块 (key -> info)
+            processed_blocks = {}  # 用于跟踪已处理的块 (key -> {'info': info, 'identifier': identifier})
+            merged_identifier_map = {}  # 被合并到代表块的标识符 -> 代表标识符
             total_dxf_files = len(dxf_files)
             
             for i, dxf_file in enumerate(dxf_files, 1):
@@ -1584,11 +1666,19 @@ class BlockFinder:
                             # 添加到当前标识符的列表中
                             existing_blocks_list.append((block, info))
                             
+                            # 当前标识符已经拥有自己的代表块，不再视为“合并到别人”
+                            merged_identifier_map.pop(identifier, None)
+
                             # 记录该块的信息对象
-                            processed_blocks[block_key] = info
+                            processed_blocks[block_key] = {
+                                'info': info,
+                                'identifier': identifier,
+                            }
                         else:
                             # 如果该块内容已被处理（可能在之前的DXF文件中，或者被其他标识符处理过）
-                            existing_info = processed_blocks[block_key]
+                            existing_entry = processed_blocks[block_key]
+                            existing_info = existing_entry['info']
+                            representative_identifier = existing_entry['identifier']
                             
                             # 检查这个块是否已经在当前标识符的列表中了
                             # 如果不在（比如它是被其他标识符引入的），我们需要将它添加到当前标识符吗？
@@ -1690,6 +1780,9 @@ class BlockFinder:
                                 self._log_progress(progress_callback, f"块 {block.name} (或同内容块) 由标识符 {identifier} 补充了 {added_qty} 件，总计: {existing_info['total_qty']}")
                             else:
                                 self._log_progress(progress_callback, f"块 {block.name} 由标识符 {identifier} 引用，但所有行均已包含在内，不累加数量")
+
+                            if identifier != representative_identifier:
+                                merged_identifier_map.setdefault(identifier, representative_identifier)
                             
                             # 关键修正：如果我们没有向 existing_blocks_list 添加任何东西，
                             # 且它是该标识符的第一个块... 
@@ -1721,10 +1814,25 @@ class BlockFinder:
             # 去除同标识符内的重复块（避免原块未清理导致的双份）
             self._dedupe_blocks_by_content(all_found_blocks, progress_callback)
             
+            visible_found_blocks = {
+                identifier: blocks_with_info
+                for identifier, blocks_with_info in all_found_blocks.items()
+                if blocks_with_info
+            }
+            visible_identifiers = set(visible_found_blocks.keys())
+            resolved_merged_identifier_map = self._resolve_merged_identifier_map(
+                merged_identifier_map,
+                visible_identifiers,
+            )
+
+            if not visible_found_blocks:
+                self._log_progress(progress_callback, "警告: 经过筛选与合并后，没有可输出的代表块")
+                return False
+
             # 合并找到的块
-            self._log_progress(progress_callback, f"开始合并 {len(all_found_blocks)} 个块...")
+            self._log_progress(progress_callback, f"开始合并 {len(visible_found_blocks)} 个块...")
             merged_file = os.path.join(output_dir, 'merged_blocks.dxf')
-            merge_success = self.merge_blocks(all_found_blocks, merged_file,
+            merge_success = self.merge_blocks(visible_found_blocks, merged_file,
                                               center_align=center_align,
                                               block_spacing=block_spacing,
                                               edge_spacing=edge_spacing,
@@ -1739,9 +1847,14 @@ class BlockFinder:
             
             # 更新Excel文件
             self._log_progress(progress_callback, "更新Excel文件...")
-            found_identifiers = list(all_found_blocks.keys())
+            found_identifiers = list(visible_found_blocks.keys())
             updated_excel_file = os.path.join(output_dir, 'updated_' + os.path.basename(excel_file))
-            excel_success = self.update_excel_with_results(excel_file, found_identifiers, updated_excel_file)
+            excel_success = self.update_excel_with_results(
+                excel_file,
+                found_identifiers,
+                updated_excel_file,
+                merged_identifier_map=resolved_merged_identifier_map,
+            )
             
             if not excel_success:
                 self._log_progress(progress_callback, "警告: 更新Excel文件失败，但块合并成功")
@@ -1751,7 +1864,9 @@ class BlockFinder:
             self._log_progress(progress_callback, "处理完成！")
             self._log_progress(progress_callback, f"合并后的块文件: {merged_file}")
             self._log_progress(progress_callback, f"更新后的Excel文件: {updated_excel_file}")
-            self._log_progress(progress_callback, f"共找到并处理 {len(all_found_blocks)} 个唯一的块")
+            self._log_progress(progress_callback, f"共找到并处理 {len(visible_found_blocks)} 个代表块")
+            if resolved_merged_identifier_map:
+                self._log_progress(progress_callback, f"另有 {len(resolved_merged_identifier_map)} 个标识符复用了已有代表块")
             self._log_progress(progress_callback, f"{'='*60}")
             
             return True

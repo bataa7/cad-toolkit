@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QUrl
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+from PyQt5.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QProgressBar, QTextEdit, QMessageBox)
 from PyQt5.QtGui import QFont, QDesktopServices
 import logging
@@ -42,6 +42,10 @@ def _resolve_verify(verify_value, ca_bundle):
     if verify_value is True and certifi:
         return certifi.where()
     return True
+
+
+def _quote_command_arg(value: str) -> str:
+    return '"' + str(value).replace('"', '""') + '"'
 
 # 当前版本
 CURRENT_VERSION = "1.0.0"
@@ -152,15 +156,28 @@ class UpdateDownloader(QThread):
             if self.cancelled:
                 return
             
-            file_url = patch_info['url']
-            file_name = patch_info['name']
+            action = patch_info.get('action', 'replace')
+            file_name = patch_info.get('name') or patch_info.get('source') or ''
             file_hash = patch_info.get('hash', '')
-            
+
+            if action == 'delete':
+                self.progress_updated.emit(
+                    idx + 1, total_files,
+                    f"准备删除文件 {idx + 1}/{total_files}: {patch_info.get('target', file_name)}"
+                )
+                continue
+
+            file_url = patch_info.get('url', '')
+            if not file_url:
+                raise ValueError(f"增量更新文件缺少下载地址: {file_name or patch_info.get('target', '')}")
+            if not file_name:
+                raise ValueError(f"增量更新文件缺少名称: {file_url}")
+
             self.progress_updated.emit(
-                idx + 1, total_files, 
+                idx + 1, total_files,
                 f"下载文件 {idx + 1}/{total_files}: {file_name}"
             )
-            
+
             # 下载文件
             local_path = os.path.join(self.download_dir, file_name)
             self.download_file(file_url, local_path, file_hash)
@@ -232,9 +249,23 @@ class UpdateInstaller:
         self.update_dir = update_dir
         self.app_dir = app_dir
     
-    def install_patches(self, patch_files: List[str]) -> bool:
+    def install_patches(self, patch_files) -> bool:
         """安装差分更新"""
         try:
+            if not patch_files:
+                raise ValueError("未提供增量更新文件")
+
+            if isinstance(patch_files[0], dict):
+                script_path = self.create_patch_script(patch_files)
+                if sys.platform == 'win32':
+                    subprocess.Popen(
+                        ['cmd', '/c', script_path],
+                        creationflags=subprocess.CREATE_NEW_CONSOLE
+                    )
+                else:
+                    subprocess.Popen(['sh', script_path])
+                return True
+
             backup_dir = os.path.join(tempfile.gettempdir(), 'cad_toolkit_backup')
             os.makedirs(backup_dir, exist_ok=True)
             
@@ -264,7 +295,8 @@ class UpdateInstaller:
         except Exception as e:
             logger.error(f"安装更新失败: {e}")
             # 恢复备份
-            self.restore_backup(backup_dir)
+            if 'backup_dir' in locals():
+                self.restore_backup(backup_dir)
             return False
     
     def apply_patch(self, patch_info: Dict, target_path: str):
@@ -289,6 +321,99 @@ class UpdateInstaller:
             source_path = os.path.join(self.update_dir, source)
             os.makedirs(os.path.dirname(target_path), exist_ok=True)
             shutil.copy2(source_path, target_path)
+
+    def create_patch_script(self, patch_files: List[Dict]) -> str:
+        """创建增量更新脚本，确保主程序退出后再替换文件。"""
+        if sys.platform == 'win32':
+            script_path = os.path.join(tempfile.gettempdir(), 'apply_incremental_update.bat')
+            lines = [
+                "@echo off",
+                "echo 正在应用增量更新...",
+                "timeout /t 2 /nobreak > nul",
+            ]
+
+            if getattr(sys, 'frozen', False):
+                exe_name = os.path.basename(sys.executable)
+                lines.append(f'taskkill /f /im {_quote_command_arg(exe_name)} 2>nul')
+                lines.append("timeout /t 1 /nobreak > nul")
+
+            for patch_info in patch_files:
+                action = patch_info.get('action', 'replace')
+                target_rel = patch_info.get('target') or patch_info.get('name')
+                if not target_rel:
+                    raise ValueError(f"补丁缺少 target: {patch_info}")
+
+                target_path = os.path.join(self.app_dir, target_rel)
+
+                if action in ('replace', 'create'):
+                    payload_name = patch_info.get('name') or patch_info.get('source')
+                    if not payload_name:
+                        raise ValueError(f"补丁缺少 name/source: {patch_info}")
+                    payload_path = os.path.join(self.update_dir, payload_name)
+                    if not os.path.exists(payload_path):
+                        raise FileNotFoundError(f"补丁文件不存在: {payload_path}")
+
+                    target_dir = os.path.dirname(target_path)
+                    if target_dir:
+                        lines.append(f'if not exist {_quote_command_arg(target_dir)} mkdir {_quote_command_arg(target_dir)}')
+                    lines.append(f'copy /y {_quote_command_arg(payload_path)} {_quote_command_arg(target_path)} >nul')
+                elif action == 'delete':
+                    lines.append(f'if exist {_quote_command_arg(target_path)} del /f /q {_quote_command_arg(target_path)}')
+                else:
+                    raise ValueError(f"不支持的补丁动作: {action}")
+
+            if getattr(sys, 'frozen', False):
+                restart_cmd = f'start "" {_quote_command_arg(sys.executable)}'
+            else:
+                argv = [sys.executable] + sys.argv
+                restart_cmd = 'start "" ' + ' '.join(_quote_command_arg(arg) for arg in argv)
+            lines.append(restart_cmd)
+            lines.append('del "%~f0"')
+
+            with open(script_path, 'w', encoding='utf-8') as f:
+                f.write("\n".join(lines) + "\n")
+            return script_path
+
+        script_path = os.path.join(tempfile.gettempdir(), 'apply_incremental_update.sh')
+        lines = [
+            "#!/bin/bash",
+            'echo "正在应用增量更新..."',
+            "sleep 2",
+        ]
+
+        for patch_info in patch_files:
+            action = patch_info.get('action', 'replace')
+            target_rel = patch_info.get('target') or patch_info.get('name')
+            if not target_rel:
+                raise ValueError(f"补丁缺少 target: {patch_info}")
+
+            target_path = os.path.join(self.app_dir, target_rel)
+
+            if action in ('replace', 'create'):
+                payload_name = patch_info.get('name') or patch_info.get('source')
+                if not payload_name:
+                    raise ValueError(f"补丁缺少 name/source: {patch_info}")
+                payload_path = os.path.join(self.update_dir, payload_name)
+                if not os.path.exists(payload_path):
+                    raise FileNotFoundError(f"补丁文件不存在: {payload_path}")
+
+                target_dir = os.path.dirname(target_path)
+                if target_dir:
+                    lines.append(f'mkdir -p {_quote_command_arg(target_dir)}')
+                lines.append(f'cp -f {_quote_command_arg(payload_path)} {_quote_command_arg(target_path)}')
+            elif action == 'delete':
+                lines.append(f'rm -f {_quote_command_arg(target_path)}')
+            else:
+                raise ValueError(f"不支持的补丁动作: {action}")
+
+        restart_cmd = ' '.join(_quote_command_arg(arg) for arg in [sys.executable] + sys.argv) + " &"
+        lines.append(restart_cmd)
+        lines.append('rm "$0"')
+
+        with open(script_path, 'w', encoding='utf-8') as f:
+            f.write("\n".join(lines) + "\n")
+        os.chmod(script_path, 0o755)
+        return script_path
     
     def restore_backup(self, backup_dir: str):
         """恢复备份"""
@@ -490,11 +615,11 @@ class UpdateDialog(QDialog):
         # 安装更新
         app_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
         installer = UpdateInstaller(download_path, app_dir)
+        has_incremental = bool(self.update_info.get('patch_files'))
         
-        if self.update_info.get('patch_files'):
+        if has_incremental:
             # 增量更新
-            patch_files = [p['name'] for p in self.update_info['patch_files']]
-            success = installer.install_patches(patch_files)
+            success = installer.install_patches(self.update_info['patch_files'])
         else:
             # 完整包更新
             success = installer.install_full_package(download_path)
@@ -503,8 +628,11 @@ class UpdateDialog(QDialog):
             QMessageBox.information(self, "更新成功", 
                                    "更新已完成，程序将重新启动。")
             self.accept()
-            # 重启程序
-            self.restart_application()
+            if has_incremental:
+                QApplication.quit()
+            else:
+                # 重启程序
+                self.restart_application()
         else:
             QMessageBox.critical(self, "更新失败", 
                                "更新安装失败，请稍后重试。")
@@ -559,12 +687,11 @@ EXAMPLE_UPDATE_API_RESPONSE = {
     "release_date": "2026-03-05",
     "patch_files": [  # 增量更新文件列表
         {
-            "name": "patch_001.json",
-            "url": "https://example.com/updates/patch_001.json",
+            "name": "patches/cad_toolkit_gui.py",
+            "url": "https://example.com/updates/patches/cad_toolkit_gui.py",
             "hash": "abc123...",
             "target": "cad_toolkit_gui.py",
-            "action": "replace",
-            "source": "cad_toolkit_gui.py"
+            "action": "replace"
         }
     ],
     "full_package": {  # 完整安装包（备用）
