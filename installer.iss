@@ -3,9 +3,10 @@
 ; 使用 Inno Setup 编译
 
 #define MyAppName "CAD工具包"
-#define MyAppVersion "3.0.0"
+#define MyAppVersion "3.8.3"
 #define MyAppPublisher "CAD工具包开发团队"
-#define MyAppURL "http://localhost:8000"
+#define MyAppURL "https://github.com/bataa7/cad-toolkit"
+#define MyAppUpdatesURL "https://github.com/bataa7/cad-toolkit/releases/latest"
 #define MyAppExeName "CAD工具包.exe"
 
 [Setup]
@@ -16,14 +17,14 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
-AppUpdatesURL={#MyAppURL}
+AppUpdatesURL={#MyAppUpdatesURL}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 LicenseFile=LICENSE.txt
 InfoBeforeFile=README.txt
 OutputDir=installer_output
-OutputBaseFilename=CAD工具包安装程序_v{#MyAppVersion}
+OutputBaseFilename=CADToolkit_Setup_v{#MyAppVersion}
 SetupIconFile=icon.ico
 Compression=lzma2/max
 SolidCompression=yes

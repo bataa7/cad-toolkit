@@ -2,7 +2,7 @@
 ; 编码: UTF-8
 
 #define MyAppName "CADToolkit"
-#define MyAppVersion "3.8.1"
+#define MyAppVersion "3.8.3"
 #define MyAppPublisher "刘延波"
 #define MyAppExeName "CADToolkit.exe"
 
@@ -15,7 +15,7 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 OutputDir=..\Output
-OutputBaseFilename=CADToolkit安装程序_v{#MyAppVersion}
+OutputBaseFilename=CADToolkit_Setup_v{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern

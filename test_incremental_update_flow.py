@@ -88,6 +88,32 @@ def test_update_installer_generates_incremental_patch_script(tmp_path, monkeypat
     assert "old\\unused.bin" in script_text or "old/unused.bin" in script_text
 
 
+def test_update_installer_launches_downloaded_installer_package(tmp_path, monkeypatch):
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    installer_file = tmp_path / "CADToolkit_Setup_v3.8.3.exe"
+    installer_file.write_bytes(b"fake-installer")
+
+    captured = {}
+
+    def fake_popen(cmd, creationflags=None):
+        captured["cmd"] = cmd
+        captured["creationflags"] = creationflags
+        return object()
+
+    monkeypatch.setattr(update_system.subprocess, "Popen", fake_popen)
+
+    installer = update_system.UpdateInstaller(str(tmp_path), str(app_dir))
+    success = installer.install_full_package(str(installer_file))
+
+    assert success is True
+    script_path = Path(captured["cmd"][2])
+    script_text = script_path.read_text(encoding="utf-8")
+    assert 'start ""' in script_text
+    assert installer_file.name in script_text
+    assert "xcopy" not in script_text
+
+
 def test_build_incremental_update_generates_patch_manifest(tmp_path):
     source = tmp_path / "module.py"
     source.write_text("print('hello')\n", encoding="utf-8")

@@ -2,12 +2,13 @@ import sys
 import os
 import time
 import re
+from pathlib import Path
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QLineEdit, QPushButton, QFileDialog, QTextEdit, 
     QComboBox, QMessageBox, QProgressBar, QGroupBox, QFormLayout, 
     QStatusBar, QCheckBox, QTabWidget, QTreeWidget, QTreeWidgetItem, 
-    QSplitter, QTextBrowser, QListWidget, QMenuBar, QAction, QSpinBox, QDoubleSpinBox,
+    QSplitter, QTextBrowser, QListWidget, QListWidgetItem, QMenuBar, QAction, QSpinBox, QDoubleSpinBox,
     QGridLayout, QStackedWidget, QDialog, QScrollArea
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QSettings, QSize
@@ -49,7 +50,16 @@ try:
 except ImportError as e:
     print(f"消息推送和更新系统未安装: {e}")
     NOTIFICATION_ENABLED = False
-    APP_VERSION = "3.8"
+    APP_VERSION = "3.8.3"
+
+try:
+    from BOM.bom_searcher import run_search as run_bom_search
+    BOM_SEARCH_ENABLED = True
+    BOM_SEARCH_IMPORT_ERROR = ""
+except Exception as e:
+    run_bom_search = None
+    BOM_SEARCH_ENABLED = False
+    BOM_SEARCH_IMPORT_ERROR = str(e)
 
 def _find_local_exe(filename):
     base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
@@ -291,6 +301,36 @@ class ExcelWorker(QThread):
             return True, result_msg
         except Exception as e:
             return False, str(e)
+
+class BOMSearchWorker(QThread):
+    """BOM搜索汇总线程"""
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(bool, object)
+
+    def __init__(self, input_file, bom_sources, output_file):
+        super().__init__()
+        self.input_file = input_file
+        self.bom_sources = bom_sources
+        self.output_file = output_file
+
+    def run(self):
+        if not BOM_SEARCH_ENABLED or run_bom_search is None:
+            self.finished.emit(False, f"BOM搜索模块不可用: {BOM_SEARCH_IMPORT_ERROR}")
+            return
+
+        try:
+            self.progress.emit("开始执行BOM搜索汇总...")
+            summary = run_bom_search(
+                input_file=Path(self.input_file),
+                bom_sources=[Path(item) for item in self.bom_sources],
+                output_file=Path(self.output_file),
+                log=self.progress.emit,
+            )
+            self.finished.emit(True, summary)
+        except Exception as e:
+            self.progress.emit(f"执行失败: {e}")
+            self.finished.emit(False, str(e))
+
 
 class ExportBlocksWorker(QThread):
     """块导出线程"""
@@ -1193,6 +1233,279 @@ class BOMCalculatorTab(QWidget):
         
         # 使用exec_()显示模态对话框，这样窗口不会被立即回收
         win.exec_()
+
+class BOMSearchTab(QWidget):
+    """BOM搜索汇总选项卡"""
+    def __init__(self):
+        super().__init__()
+        self.bom_sources = []
+        self.worker = None
+        self.init_ui()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout()
+
+        file_group = QGroupBox("文件设置")
+        file_layout = QFormLayout()
+
+        input_layout = QHBoxLayout()
+        self.input_edit = QLineEdit()
+        self.input_edit.setMinimumWidth(300)
+        self.input_btn = QPushButton("选择任务单")
+        self.input_btn.clicked.connect(self.select_input_file)
+        self.input_btn.setMinimumWidth(100)
+        input_layout.addWidget(self.input_edit)
+        input_layout.addWidget(self.input_btn)
+        file_layout.addRow("任务单Excel:", input_layout)
+
+        bom_layout = QVBoxLayout()
+        bom_summary_layout = QHBoxLayout()
+        self.bom_edit = QLineEdit()
+        self.bom_edit.setReadOnly(True)
+        self.bom_edit.setPlaceholderText("未选择BOM文件或文件夹")
+        bom_summary_layout.addWidget(self.bom_edit)
+        bom_layout.addLayout(bom_summary_layout)
+
+        bom_button_layout = QHBoxLayout()
+        self.bom_files_btn = QPushButton("选择BOM文件")
+        self.bom_files_btn.clicked.connect(self.select_bom_files)
+        self.bom_folder_btn = QPushButton("选择BOM文件夹")
+        self.bom_folder_btn.clicked.connect(self.select_bom_folder)
+        self.clear_bom_btn = QPushButton("清空BOM来源")
+        self.clear_bom_btn.clicked.connect(self.clear_bom_sources)
+        bom_button_layout.addWidget(self.bom_files_btn)
+        bom_button_layout.addWidget(self.bom_folder_btn)
+        bom_button_layout.addWidget(self.clear_bom_btn)
+        bom_layout.addLayout(bom_button_layout)
+
+        self.bom_list = QListWidget()
+        self.bom_list.setMinimumHeight(100)
+        bom_layout.addWidget(self.bom_list)
+        file_layout.addRow("BOM来源:", bom_layout)
+
+        output_layout = QHBoxLayout()
+        self.output_edit = QLineEdit()
+        self.output_edit.setMinimumWidth(300)
+        self.output_btn = QPushButton("选择输出文件")
+        self.output_btn.clicked.connect(self.select_output_file)
+        self.output_btn.setMinimumWidth(100)
+        output_layout.addWidget(self.output_edit)
+        output_layout.addWidget(self.output_btn)
+        file_layout.addRow("输出结果:", output_layout)
+
+        file_group.setLayout(file_layout)
+        main_layout.addWidget(file_group)
+
+        settings_group = QGroupBox("处理说明")
+        settings_layout = QVBoxLayout()
+
+        note_label = QLabel(
+            "支持选择多个BOM文件或整个BOM文件夹；结果会输出“汇总BOM、搜索结果、搜索明细、未找到”四个工作表。"
+        )
+        note_label.setWordWrap(True)
+        settings_layout.addWidget(note_label)
+
+        if not BOM_SEARCH_ENABLED:
+            warning_label = QLabel(f"BOM搜索模块加载失败：{BOM_SEARCH_IMPORT_ERROR}")
+            warning_label.setWordWrap(True)
+            warning_label.setStyleSheet("color: #c62828;")
+            settings_layout.addWidget(warning_label)
+
+        btn_layout = QHBoxLayout()
+        self.run_btn = QPushButton("开始搜索汇总")
+        self.run_btn.setMinimumHeight(40)
+        self.run_btn.clicked.connect(self.run_bom_searcher)
+        self.clear_log_btn = QPushButton("清空日志")
+        self.clear_log_btn.clicked.connect(self.clear_log)
+        btn_layout.addWidget(self.run_btn)
+        btn_layout.addWidget(self.clear_log_btn)
+        settings_layout.addLayout(btn_layout)
+
+        settings_group.setLayout(settings_layout)
+        main_layout.addWidget(settings_group)
+
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setFormat("准备就绪")
+        main_layout.addWidget(self.progress)
+
+        log_group = QGroupBox("日志输出")
+        log_layout = QVBoxLayout()
+        self.log_output = QTextEdit()
+        self.log_output.setReadOnly(True)
+        self.log_output.setLineWrapMode(QTextEdit.WidgetWidth)
+        log_layout.addWidget(self.log_output)
+        log_group.setLayout(log_layout)
+        main_layout.addWidget(log_group, 1)
+
+        self.setLayout(main_layout)
+
+        if not BOM_SEARCH_ENABLED:
+            self.run_btn.setEnabled(False)
+
+    def select_input_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择任务单Excel",
+            "",
+            "Excel Files (*.xlsx *.xlsm *.xltx *.xltm *.xls);;All Files (*)"
+        )
+        if not file_path:
+            return
+
+        self.input_edit.setText(file_path)
+        if not self.output_edit.text().strip():
+            suggested_path = Path(file_path).with_name(f"{Path(file_path).stem}_搜索结果.xlsx")
+            self.output_edit.setText(str(suggested_path))
+
+    def select_bom_files(self):
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "选择BOM文件",
+            "",
+            "Excel Files (*.xlsx *.xlsm *.xltx *.xltm *.xls);;All Files (*)"
+        )
+        if file_paths:
+            self.add_bom_sources(file_paths)
+
+    def select_bom_folder(self):
+        folder_path = QFileDialog.getExistingDirectory(self, "选择BOM文件夹", "")
+        if folder_path:
+            self.add_bom_sources([folder_path])
+
+    def select_output_file(self):
+        current_path = self.output_edit.text().strip()
+        start_path = current_path or self.input_edit.text().strip() or ""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "选择输出文件",
+            start_path,
+            "Excel Files (*.xlsx)"
+        )
+        if file_path:
+            if not file_path.lower().endswith(".xlsx"):
+                file_path += ".xlsx"
+            self.output_edit.setText(file_path)
+
+    def add_bom_sources(self, paths):
+        seen = {
+            os.path.normcase(os.path.abspath(path))
+            for path in self.bom_sources
+        }
+
+        for path in paths:
+            normalized = os.path.normcase(os.path.abspath(path))
+            if normalized not in seen:
+                self.bom_sources.append(path)
+                seen.add(normalized)
+
+        self.update_bom_sources_display()
+
+    def clear_bom_sources(self):
+        self.bom_sources = []
+        self.update_bom_sources_display()
+
+    def update_bom_sources_display(self):
+        self.bom_list.clear()
+        for path in self.bom_sources:
+            self.bom_list.addItem(path)
+
+        if self.bom_sources:
+            self.bom_edit.setText(f"已选择 {len(self.bom_sources)} 个BOM来源")
+        else:
+            self.bom_edit.clear()
+
+    def clear_log(self):
+        self.log_output.clear()
+
+    def add_log(self, text):
+        self.log_output.append(text)
+        self.log_output.moveCursor(QTextCursor.End)
+
+    def set_running_state(self, running):
+        self.run_btn.setEnabled(not running and BOM_SEARCH_ENABLED)
+        self.input_btn.setEnabled(not running)
+        self.bom_files_btn.setEnabled(not running)
+        self.bom_folder_btn.setEnabled(not running)
+        self.clear_bom_btn.setEnabled(not running)
+        self.output_btn.setEnabled(not running)
+        self.clear_log_btn.setEnabled(not running)
+
+    def run_bom_searcher(self):
+        if not BOM_SEARCH_ENABLED:
+            QMessageBox.warning(self, "功能不可用", f"BOM搜索模块加载失败：\n{BOM_SEARCH_IMPORT_ERROR}")
+            return
+
+        input_file = self.input_edit.text().strip()
+        output_file = self.output_edit.text().strip()
+
+        if not input_file:
+            QMessageBox.warning(self, "输入错误", "请选择任务单Excel文件。")
+            return
+
+        if not os.path.exists(input_file):
+            QMessageBox.warning(self, "输入错误", f"任务单文件不存在：\n{input_file}")
+            return
+
+        if not self.bom_sources:
+            QMessageBox.warning(self, "输入错误", "请至少选择一个BOM文件或BOM文件夹。")
+            return
+
+        missing_sources = [path for path in self.bom_sources if not os.path.exists(path)]
+        if missing_sources:
+            QMessageBox.warning(
+                self,
+                "输入错误",
+                "以下BOM来源不存在：\n" + "\n".join(missing_sources[:10])
+            )
+            return
+
+        if not output_file:
+            output_file = str(Path(input_file).with_name(f"{Path(input_file).stem}_搜索结果.xlsx"))
+            self.output_edit.setText(output_file)
+
+        self.set_running_state(True)
+        self.log_output.clear()
+        self.progress.setRange(0, 0)
+        self.progress.setFormat("正在处理...")
+
+        self.worker = BOMSearchWorker(input_file, list(self.bom_sources), output_file)
+        self.worker.progress.connect(self.add_log)
+        self.worker.finished.connect(self.on_search_finished)
+        self.worker.start()
+
+    def on_search_finished(self, success, result):
+        self.set_running_state(False)
+        self.progress.setRange(0, 100)
+
+        if success:
+            summary = result
+            self.progress.setValue(100)
+            self.progress.setFormat("处理完成")
+
+            self.add_log(f"扫描BOM文件数：{summary.scanned_files}")
+            if getattr(summary, "skipped_files", None):
+                self.add_log("以下文件已跳过：")
+                for item in summary.skipped_files:
+                    self.add_log(f"  - {item}")
+
+            QMessageBox.information(
+                self,
+                "处理完成",
+                (
+                    f"任务单图号数：{summary.total_queries}\n"
+                    f"结果行数：{summary.total_results}\n"
+                    f"未找到：{summary.not_found_count}\n"
+                    f"扫描BOM文件数：{summary.scanned_files}\n"
+                    f"输出文件：{summary.output_path}"
+                ),
+            )
+        else:
+            self.progress.setValue(0)
+            self.progress.setFormat("处理失败")
+            QMessageBox.critical(self, "处理失败", f"BOM搜索汇总失败：\n{result}")
+
 
 class BlockFinderTab(QWidget):
     """块筛寻和合并选项卡"""
@@ -4066,7 +4379,7 @@ class MainWindow(QMainWindow):
     
     def init_ui(self):
         # 设置窗口标题和大小
-        version_text = f"CAD工具包 v{APP_VERSION}" if NOTIFICATION_ENABLED else "CAD工具包 v3.8"
+        version_text = f"CAD工具包 v{APP_VERSION}" if NOTIFICATION_ENABLED else "CAD工具包 v3.8.3"
         self.setWindowTitle(version_text)
         try:
             screen = QApplication.primaryScreen()
@@ -4130,20 +4443,29 @@ class MainWindow(QMainWindow):
         """)
         
         # 添加侧边栏项
+        self.sidebar_custom_items = []
         nav_items = [
-            ("BOM数量计算", "bom"),
-            ("块批量导出", "export"),
-            ("CAD块创建", "create"),
-            ("块筛寻合并", "find"),
-            ("CAD文件合并", "merge"),
-            ("文本内容更改", "text"),
-            ("DXF/DWG 转换", "convert"),
-            ("2D Nesting 排版", "nest")
+            ("BOM搜索汇总", "bom_search", "测试"),
+            ("BOM数量计算", "bom", ""),
+            ("块批量导出", "export", ""),
+            ("CAD块创建", "create", ""),
+            ("块筛寻合并", "find", ""),
+            ("CAD文件合并", "merge", ""),
+            ("文本内容更改", "text", ""),
+            ("DXF/DWG 转换", "convert", ""),
+            ("2D Nesting 排版", "nest", "")
         ]
         
-        for name, icon_name in nav_items:
-            # 这里可以添加图标，目前只用文字
-            item = self.sidebar.addItem(name)
+        for name, icon_name, badge_text in nav_items:
+            item = QListWidgetItem("" if badge_text else name)
+            item.setData(Qt.UserRole, name)
+            item.setSizeHint(QSize(0, 50))
+            self.sidebar.addItem(item)
+
+            if badge_text:
+                item_widget, title_label = self.create_sidebar_item_widget(name, badge_text)
+                self.sidebar.setItemWidget(item, item_widget)
+                self.sidebar_custom_items.append((item, title_label))
             
         self.sidebar.currentRowChanged.connect(self.change_page)
         
@@ -4156,12 +4478,14 @@ class MainWindow(QMainWindow):
         self.title_label = QLabel("BOM数量计算")
         self.title_label.setFont(QFont("Microsoft YaHei", 16, QFont.Bold))
         self.title_label.setStyleSheet("color: #0277bd; margin-bottom: 10px;")
+        self.title_label.setText("BOM搜索汇总")
         content_layout.addWidget(self.title_label)
         
         # 堆叠窗口
         self.stacked_widget = QStackedWidget()
         
         # 创建页面
+        self.bom_search_tab = BOMSearchTab()
         self.bom_tab = BOMCalculatorTab()
         self.export_tab = ExportBlocksTab()
         self.creator_tab = BlockCreatorTab()
@@ -4172,6 +4496,7 @@ class MainWindow(QMainWindow):
         self.nesting_tab = SolidEdgeNestingTab()
         
         # 添加页面到堆叠窗口
+        self.stacked_widget.addWidget(self.bom_search_tab)
         self.stacked_widget.addWidget(self.bom_tab)
         self.stacked_widget.addWidget(self.export_tab)
         self.stacked_widget.addWidget(self.creator_tab)
@@ -4199,6 +4524,7 @@ class MainWindow(QMainWindow):
         
         # 默认选中第一项
         self.sidebar.setCurrentRow(0)
+        self.refresh_sidebar_item_styles()
         
         # 创建状态栏
         self.statusBar().showMessage("就绪")
@@ -4207,14 +4533,48 @@ class MainWindow(QMainWindow):
         if NOTIFICATION_ENABLED and self.notification_manager:
             self.notification_widget = NotificationWidget(self.notification_manager, self)
             self.statusBar().addPermanentWidget(self.notification_widget)
-        
+
+    def create_sidebar_item_widget(self, text, badge_text):
+        """创建带红色小字标记的侧边栏项目"""
+        widget = QWidget()
+        widget.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        widget.setStyleSheet("background: transparent;")
+
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(20, 0, 12, 0)
+        layout.setSpacing(6)
+
+        title_label = QLabel(text)
+        title_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        title_label.setStyleSheet("color: #666666; font-size: 11pt;")
+
+        badge_label = QLabel(badge_text)
+        badge_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        badge_label.setStyleSheet("color: #d32f2f; font-size: 8pt; font-weight: bold;")
+
+        layout.addWidget(title_label)
+        layout.addWidget(badge_label, 0, Qt.AlignVCenter)
+        layout.addStretch()
+
+        return widget, title_label
+
+    def refresh_sidebar_item_styles(self):
+        """刷新自定义侧边栏项目的选中态样式"""
+        current_item = self.sidebar.currentItem()
+        for item, title_label in getattr(self, 'sidebar_custom_items', []):
+            if item == current_item:
+                title_label.setStyleSheet("color: #0277bd; font-size: 11pt; font-weight: bold;")
+            else:
+                title_label.setStyleSheet("color: #666666; font-size: 11pt;")
+    
     def change_page(self, index):
         """切换页面"""
         self.stacked_widget.setCurrentIndex(index)
         # 更新标题
         item = self.sidebar.item(index)
         if item:
-            self.title_label.setText(item.text())
+            self.title_label.setText(item.data(Qt.UserRole) or item.text())
+        self.refresh_sidebar_item_styles()
     
     def create_menu(self):
         """创建菜单"""

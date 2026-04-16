@@ -1,8 +1,8 @@
 # UTF-8
 VSVersionInfo(
     ffi=FixedFileInfo(
-        filevers=(3, 0, 0, 0),
-        prodvers=(3, 0, 0, 0),
+        filevers=(3, 8, 3, 0),
+        prodvers=(3, 8, 3, 0),
         mask=0x3F,
         flags=0x0,
         OS=0x4,
@@ -17,12 +17,12 @@ VSVersionInfo(
                 [
                     StringStruct(u"CompanyName", u""),
                     StringStruct(u"FileDescription", u"Excel 层级数量处理器"),
-                    StringStruct(u"FileVersion", u"3.0"),
+                    StringStruct(u"FileVersion", u"3.8.3"),
                     StringStruct(u"InternalName", u"Excel层级数量处理器"),
                     StringStruct(u"LegalCopyright", u""),
                     StringStruct(u"OriginalFilename", u"Excel层级数量处理器.exe"),
                     StringStruct(u"ProductName", u"Excel层级数量处理器"),
-                    StringStruct(u"ProductVersion", u"3.0"),
+                    StringStruct(u"ProductVersion", u"3.8.3"),
                 ],
             )
         ]),

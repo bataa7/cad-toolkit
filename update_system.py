@@ -480,6 +480,69 @@ rm "$0"
         return script_path
 
 
+    def create_update_script(self, package_path: str) -> str:
+        """Create an update script for a directory payload or installer package."""
+        package_path = os.path.abspath(package_path)
+
+        if sys.platform == 'win32':
+            script_path = os.path.join(tempfile.gettempdir(), 'update.bat')
+            lines = [
+                "@echo off",
+                "echo Preparing update...",
+                "timeout /t 2 /nobreak > nul",
+            ]
+
+            if getattr(sys, 'frozen', False):
+                exe_name = os.path.basename(sys.executable)
+                lines.append(f'taskkill /f /im {_quote_command_arg(exe_name)} 2>nul')
+                lines.append("timeout /t 1 /nobreak > nul")
+
+            if os.path.isdir(package_path):
+                source_glob = os.path.join(package_path, "*")
+                lines.append(
+                    f'xcopy /s /e /y {_quote_command_arg(source_glob)} '
+                    f'{_quote_command_arg(self.app_dir + os.sep)} >nul'
+                )
+                if getattr(sys, 'frozen', False):
+                    lines.append(f'start "" {_quote_command_arg(sys.executable)}')
+            elif package_path.lower().endswith(('.exe', '.msi')):
+                lines.append(f'start "" {_quote_command_arg(package_path)}')
+            else:
+                raise ValueError(f"Unsupported full package type: {package_path}")
+
+            lines.append('del "%~f0"')
+            script_content = "\n".join(lines) + "\n"
+        else:
+            script_path = os.path.join(tempfile.gettempdir(), 'update.sh')
+            lines = [
+                "#!/bin/bash",
+                'echo "Preparing update..."',
+                "sleep 2",
+            ]
+
+            if os.path.isdir(package_path):
+                source_glob = os.path.join(package_path, "*")
+                lines.append(f'cp -rf {_quote_command_arg(source_glob)} {_quote_command_arg(self.app_dir + os.sep)}')
+                if getattr(sys, 'frozen', False):
+                    lines.append(f'{_quote_command_arg(sys.executable)} &')
+            elif os.path.isfile(package_path):
+                lines.append(f'chmod +x {_quote_command_arg(package_path)} 2>/dev/null || true')
+                lines.append(f'{_quote_command_arg(package_path)} &')
+            else:
+                raise ValueError(f"Unsupported update package: {package_path}")
+
+            lines.append('rm "$0"')
+            script_content = "\n".join(lines) + "\n"
+
+        with open(script_path, 'w', encoding='utf-8') as f:
+            f.write(script_content)
+
+        if sys.platform != 'win32':
+            os.chmod(script_path, 0o755)
+
+        return script_path
+
+
 class UpdateDialog(QDialog):
     """更新对话框"""
     

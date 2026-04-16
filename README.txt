@@ -1,4 +1,4 @@
-欢迎使用 CAD工具包 v3.0.0
+欢迎使用 CAD工具包 v3.8.3
 
 这是一款专业的DXF文件批量处理工具。
 
@@ -22,6 +22,6 @@
 • 100MB 磁盘空间
 
 技术支持：
-访问 http://localhost:8000 获取帮助文档和更新
+访问 https://github.com/bataa7/cad-toolkit 获取帮助文档，访问 Releases 页面获取更新
 
 感谢使用！

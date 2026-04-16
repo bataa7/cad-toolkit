@@ -1,7 +1,13 @@
 {
-  "version": "3.8.2",
-  "description": "CAD工具包 v3.8.2\n\n本次更新:\n- 修复块创建模块中“清理现有块”后的残留与同名冲突问题\n- 优化块筛寻合并结果，修复列识别误判，并在Excel中新增“已合并”状态说明\n- 修复2D Nesting排版包生成逻辑，避免0导出仍提示成功，并提升重复件聚合与文件命名稳定性\n- 完成新增回归测试与全量测试验证",
-  "release_date": "2026-03-25",
+  "version": "3.8.3",
+  "description": "CAD工具包 v3.8.3\n\n本次更新:\n- 主程序新增“BOM搜索汇总”页面，集成独立 BOM 工具，支持任务单 + 多个 BOM 文件/文件夹直接生成汇总结果\n- 新增版本公告，明确提示本次 BOM 功能接入、更新方式与测试结论\n- 修正客户端完整安装包更新链路，已下载的旧版本程序可在“检查更新”后拉起新版安装包完成升级\n- 完成 BOM 搜索与更新链路相关测试验证",
+  "release_date": "2026-04-16",
   "download_url": "https://github.com/bataa7/cad-toolkit/releases/latest",
+  "size": 63249470,
+  "full_package": {
+    "name": "CADToolkit_Setup_v3.8.3.exe",
+    "url": "https://github.com/bataa7/cad-toolkit/releases/download/v3.8.3/CADToolkit_Setup_v3.8.3.exe",
+    "package_type": "installer"
+  },
   "min_version": "3.8.0"
 }

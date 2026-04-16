@@ -1,0 +1,38 @@
+name: windows-verify
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Run CLI smoke test
+        shell: cmd
+        run: |
+          if not exist artifacts mkdir artifacts
+          python bom_searcher.py --input "%CD%\测试.xlsx" --bom-folder "%CD%" --output "%CD%\artifacts\verify_output.xlsx"
+
+      - name: Upload verification artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bom-search-result
+          path: artifacts\verify_output.xlsx
+          if-no-files-found: error
