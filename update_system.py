@@ -447,40 +447,6 @@ class UpdateInstaller:
             return False
     
     def create_update_script(self, package_path: str) -> str:
-        """创建更新脚本"""
-        if sys.platform == 'win32':
-            script_content = f"""@echo off
-echo 正在更新程序...
-timeout /t 2 /nobreak > nul
-taskkill /f /im "CAD工具包.exe" 2>nul
-timeout /t 1 /nobreak > nul
-xcopy /s /y "{package_path}\\*" "{self.app_dir}\\"
-start "" "{os.path.join(self.app_dir, 'CAD工具包.exe')}"
-del "%~f0"
-"""
-            script_path = os.path.join(tempfile.gettempdir(), 'update.bat')
-        else:
-            script_content = f"""#!/bin/bash
-echo "正在更新程序..."
-sleep 2
-pkill -f "CAD工具包"
-sleep 1
-cp -rf "{package_path}"/* "{self.app_dir}/"
-"{os.path.join(self.app_dir, 'CAD工具包')}" &
-rm "$0"
-"""
-            script_path = os.path.join(tempfile.gettempdir(), 'update.sh')
-        
-        with open(script_path, 'w', encoding='utf-8') as f:
-            f.write(script_content)
-        
-        if sys.platform != 'win32':
-            os.chmod(script_path, 0o755)
-        
-        return script_path
-
-
-    def create_update_script(self, package_path: str) -> str:
         """Create an update script for a directory payload or installer package."""
         package_path = os.path.abspath(package_path)
 
@@ -688,14 +654,18 @@ class UpdateDialog(QDialog):
             success = installer.install_full_package(download_path)
         
         if success:
-            QMessageBox.information(self, "更新成功", 
-                                   "更新已完成，程序将重新启动。")
-            self.accept()
             if has_incremental:
+                QMessageBox.information(self, "更新成功", "更新已完成，程序将重新启动。")
+                self.accept()
                 QApplication.quit()
             else:
-                # 重启程序
-                self.restart_application()
+                QMessageBox.information(
+                    self,
+                    "已启动安装程序",
+                    "新版安装包已经启动，请按安装向导完成升级。安装完成后会启动新版本。"
+                )
+                self.accept()
+                QApplication.quit()
         else:
             QMessageBox.critical(self, "更新失败", 
                                "更新安装失败，请稍后重试。")

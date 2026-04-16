@@ -259,7 +259,9 @@ class BlockFinder:
             'total_qty': ['总数量', '总量', 'total', 'total qty', 'total_qty', '数量合计'],
             'material': ['材质', '材料', 'material', 'material type'],
             'thickness': ['厚度', '厚', 'thickness', 'thick'],
-            'name': ['名称', '零件名称', '部件名称', '零件名', '品名', 'name', 'part name', 'part_name']
+            'name': ['名称', '零件名称', '部件名称', '零件名', '品名', 'name', 'part name', 'part_name'],
+            'remark': ['备注', '备注栏', 'remark', 'note', '单号', '订单号', '批号'],
+            'sequence': ['序号', '编号', 'no', 'num', 'number', 'index']
         }
         
         column_map = {}
@@ -311,9 +313,11 @@ class BlockFinder:
         material_col = column_map.get('material')
         thickness_col = column_map.get('thickness')
         name_col = column_map.get('name')
+        remark_col = column_map.get('remark')
+        sequence_col = column_map.get('sequence')
         
         logger.info(f"识别到的列: 物料ID列='{material_id_col}', 图号列='{drawing_num_col}', \
-                   总数量列='{total_qty_col}', 材质列='{material_col}', 厚度列='{thickness_col}', 名称列='{name_col}'")
+                   总数量列='{total_qty_col}', 材质列='{material_col}', 厚度列='{thickness_col}', 名称列='{name_col}', 备注列='{remark_col}', 序号列='{sequence_col}'")
         
         # 处理数据
         def parse_qty(val):
@@ -341,6 +345,9 @@ class BlockFinder:
             except Exception:
                 return 1
 
+        # 先收集所有行的信息，用于后续备注继承处理
+        row_data_list = []  # 存储每行的信息：{'index': index, 'sequence': seq, 'remark': remark, 'identifiers': ids, 'row_info': {...}}
+        
         for index, row in df.iterrows():
             # 获取本行的所有有效标识符
             identifiers_in_row = []
@@ -385,11 +392,33 @@ class BlockFinder:
             material_val = row[material_col] if material_col and pd.notna(row[material_col]) else ''
             thickness_val = row[thickness_col] if thickness_col and pd.notna(row[thickness_col]) else ''
             name_val = row[name_col] if name_col and pd.notna(row[name_col]) else ''
-
-            # 过滤掉材质和厚度均为“组件”的行
-            if str(material_val).strip() == '组件' and str(thickness_val).strip() == '组件':
-                logger.info(f"跳过行 {index}: 材质和厚度均为'组件'")
-                continue
+            
+            # 提取序号值
+            sequence_val = None
+            if sequence_col and pd.notna(row[sequence_col]):
+                try:
+                    seq_value = row[sequence_col]
+                    if isinstance(seq_value, (int, float)):
+                        sequence_val = float(seq_value)
+                    else:
+                        sequence_val = float(str(seq_value).strip())
+                except (ValueError, TypeError):
+                    pass
+            
+            # 提取备注值（单号）
+            remark_val = ''
+            if remark_col and pd.notna(row[remark_col]):
+                try:
+                    remark_value = row[remark_col]
+                    if isinstance(remark_value, (int, float)):
+                        if float(remark_value).is_integer():
+                            remark_val = str(int(remark_value)).strip()
+                        else:
+                            remark_val = str(remark_value).strip()
+                    else:
+                        remark_val = str(remark_value).strip()
+                except (ValueError, TypeError):
+                    remark_val = str(row[remark_col]).strip()
 
             # 创建共享的 info 对象
             # 注意：不在这里添加 row_allocations，而是在下面根据需要创建新字典
@@ -400,43 +429,85 @@ class BlockFinder:
                 'material_id': material_id_str,
                 'drawing_num': drawing_num_str,
                 'name': name_val,
+                'remark': remark_val,
                 'row_index': index  # 保留行索引作为参考（如第一行）
             }
+            
+            # 存储行数据用于后续备注继承
+            row_data_list.append({
+                'index': index,
+                'sequence': sequence_val,
+                'remark': remark_val,
+                'identifiers': identifiers_in_row,
+                'info': info,
+                'qty': qty
+            })
+        
+        # 备注继承：根据序号层级关系，将大组件的备注继承给子集
+        # 大组件：序号是整数（如 1, 2, 3）
+        # 子集：序号是小数（如 1.1, 1.2, 2.1），整数部分对应大组件
+        parent_remarks = {}  # parent_sequence_int -> remark
+        for row_data in row_data_list:
+            seq = row_data['sequence']
+            remark = row_data['remark']
+            
+            if seq is not None and remark:
+                # 判断是否是大组件（整数）
+                if seq == int(seq):
+                    parent_remarks[int(seq)] = remark
+        
+        # 将大组件的备注继承给子集
+        for row_data in row_data_list:
+            seq = row_data['sequence']
+            remark = row_data['remark']
+            
+            if seq is not None and not remark:
+                # 没有备注，尝试从大组件继承
+                parent_seq = int(seq)
+                if parent_seq in parent_remarks:
+                    inherited_remark = parent_remarks[parent_seq]
+                    row_data['remark'] = inherited_remark
+                    row_data['info']['remark'] = inherited_remark
+                    logger.info(f"行 {row_data['index']}: 序号 {seq} 继承大组件 {parent_seq} 的备注 '{inherited_remark}'")
+        
+        # 现在处理收集到的行数据，构建 material_info
+        for row_data in row_data_list:
+            index = row_data['index']
+            identifiers_in_row = row_data['identifiers']
+            info = row_data['info']
+            qty = row_data['qty']
+            remark_val = row_data['remark']
+            
+            # 过滤掉材质和厚度均为"组件"的行（不用于块搜索，但备注仍用于继承）
+            if str(info.get('material', '')).strip() == '组件' and str(info.get('thickness', '')).strip() == '组件':
+                logger.info(f"跳过行 {index}: 材质和厚度均为'组件'（不用于块搜索）")
+                continue
+            
+            # 确定标识符类型
+            id_type = 'unknown'
+            if material_id_col and pd.notna(df.at[index, material_id_col]):
+                id_type = 'material_id'
+            elif drawing_num_col and pd.notna(df.at[index, drawing_num_col]):
+                id_type = 'drawing_num'
 
             for identifier in identifiers_in_row:
-                # 确定标识符类型
-                id_type = 'unknown'
-                if material_id_col and pd.notna(row[material_id_col]):
-                    try:
-                        # 尝试重新格式化以比较
-                        material_id_value = row[material_id_col]
-                        if isinstance(material_id_value, float):
-                            if material_id_value.is_integer():
-                                m_val = str(int(material_id_value)).strip()
-                            else:
-                                m_val = str(material_id_value).strip().rstrip('.0').rstrip('0').rstrip('.')
-                        else:
-                            m_val = str(int(material_id_value)).strip() if isinstance(material_id_value, (int, float)) else str(material_id_value).strip()
-                    except:
-                        m_val = str(row[material_id_col]).strip()
-                    
-                    if self._normalize_identifier(m_val) == identifier:
-                        id_type = 'material_id'
-                
-                if id_type == 'unknown' and drawing_num_col and pd.notna(row[drawing_num_col]):
-                    d_val = str(row[drawing_num_col]).strip()
-                    if self._normalize_identifier(d_val) == identifier:
-                        id_type = 'drawing_num'
-
                 if identifier in material_info:
                     # 如果标识符已存在
                     existing_info = material_info[identifier]
-                    if not existing_info.get('material_id') and material_id_str:
-                        existing_info['material_id'] = material_id_str
-                    if not existing_info.get('drawing_num') and drawing_num_str:
-                        existing_info['drawing_num'] = drawing_num_str
-                    if not existing_info.get('name') and name_val:
-                        existing_info['name'] = name_val
+                    if not existing_info.get('material_id') and info.get('material_id'):
+                        existing_info['material_id'] = info['material_id']
+                    if not existing_info.get('drawing_num') and info.get('drawing_num'):
+                        existing_info['drawing_num'] = info['drawing_num']
+                    if not existing_info.get('name') and info.get('name'):
+                        existing_info['name'] = info['name']
+                    # 合并备注值：收集所有非空的备注
+                    if remark_val:
+                        existing_remarks = existing_info.get('remarks', [])
+                        if existing_info.get('remark') and existing_info['remark'] not in existing_remarks:
+                            existing_remarks.append(existing_info['remark'])
+                        if remark_val not in existing_remarks:
+                            existing_remarks.append(remark_val)
+                        existing_info['remarks'] = existing_remarks
                     # 更新数量：通过添加行分配信息
                     if 'row_allocations' not in existing_info:
                         # 这是一个防御性检查，正常情况下新创建的info都会有row_allocations
@@ -454,6 +525,8 @@ class BlockFinder:
                     new_info['id_type'] = id_type
                     # 初始化行分配信息：行索引 -> 该行数量
                     new_info['row_allocations'] = {index: qty}
+                    # 初始化备注列表
+                    new_info['remarks'] = [remark_val] if remark_val else []
                     material_info[identifier] = new_info
         
         logger.info(f"成功提取 {len(material_info)} 个物料信息")
@@ -478,6 +551,55 @@ class BlockFinder:
         text = text.replace(' ', '')
         # 统一大写
         return text.upper()
+    
+    def _remark_matches_file(self, remark: str, filename: str) -> bool:
+        """
+        检查备注值（单号）是否匹配DXF文件名
+        
+        匹配规则：
+        1. 精确匹配：备注值 == 文件名
+        2. 文件名以备注值开头（如 "260326-版本2" 匹配 "260326"）
+        3. 备注值以文件名开头（如备注 "260326 某描述" 匹配文件 "260326"）
+        4. 备注值中包含文件名（要求文件名长度>=4，避免短串误匹配）
+        5. 文件名中包含备注值（要求备注值长度>=4）
+        
+        参数:
+        remark: 备注值（如单号 "260326"）
+        filename: DXF文件名（不含扩展名）
+        
+        返回:
+        bool: 是否匹配
+        """
+        if not remark or not filename:
+            return False
+        
+        remark_clean = remark.strip()
+        filename_clean = filename.strip()
+        
+        if not remark_clean or not filename_clean:
+            return False
+        
+        # 精确匹配
+        if remark_clean == filename_clean:
+            return True
+        
+        # 文件名以备注值开头（如 "260326-版本2" 匹配 "260326"）
+        if filename_clean.startswith(remark_clean):
+            return True
+        
+        # 备注值以文件名开头（如备注 "260326 某描述" 匹配文件 "260326"）
+        if remark_clean.startswith(filename_clean):
+            return True
+        
+        # 备注值中包含文件名（要求文件名足够长以避免误匹配）
+        if len(filename_clean) >= 4 and filename_clean in remark_clean:
+            return True
+        
+        # 文件名中包含备注值（要求备注值足够长）
+        if len(remark_clean) >= 4 and remark_clean in filename_clean:
+            return True
+        
+        return False
 
     def search_blocks_in_dxf(self, dxf_file: str, material_info: Dict[str, Dict[str, Any]]) -> Dict[str, List[Any]]:
         """
@@ -1155,6 +1277,7 @@ class BlockFinder:
         found_identifiers: List[str],
         output_file: str,
         merged_identifier_map: Optional[Dict[str, str]] = None,
+        identifier_to_dxf_file: Optional[Dict[str, str]] = None,
     ) -> bool:
         """
         更新Excel文件，添加找到/未找到标记
@@ -1164,6 +1287,7 @@ class BlockFinder:
         found_identifiers: 找到的物料ID或图号列表
         output_file: 输出Excel文件路径
         merged_identifier_map: 被合并到代表块的标识符映射
+        identifier_to_dxf_file: 标识符到匹配的DXF文件名的映射
 
         返回:
         bool: 操作是否成功
@@ -1171,6 +1295,7 @@ class BlockFinder:
         try:
             found_identifiers = set(found_identifiers)
             merged_identifier_map = merged_identifier_map or {}
+            identifier_to_dxf_file = identifier_to_dxf_file or {}
 
             # 加载Excel文件
             df = pd.read_excel(excel_file)
@@ -1184,6 +1309,7 @@ class BlockFinder:
             df['查找结果'] = '未找到'
             df['匹配类型'] = ''
             df['合并到标识符'] = ''
+            df['匹配CAD文件'] = ''
             
             # 更新结果
             found_count = 0
@@ -1227,9 +1353,33 @@ class BlockFinder:
                             match_type = '图号'
                             merged_to = merged_identifier_map[drawing_num]
 
+                # 确定匹配的CAD文件名
+                matched_cad_file = ''
+                if row_status in ('已找到', '已合并'):
+                    # 优先检查物料ID对应的CAD文件
+                    if material_id_col and pd.notna(row[material_id_col]):
+                        try:
+                            mid = str(int(row[material_id_col])).strip()
+                        except (ValueError, TypeError):
+                            mid = str(row[material_id_col]).strip()
+                        mid = self._normalize_identifier(mid)
+                        if mid in identifier_to_dxf_file:
+                            matched_cad_file = identifier_to_dxf_file[mid]
+                    # 如果物料ID没有匹配到CAD文件，尝试图号
+                    if not matched_cad_file and drawing_num_col and pd.notna(row[drawing_num_col]):
+                        dnum = str(row[drawing_num_col]).strip()
+                        dnum = self._normalize_identifier(dnum)
+                        if dnum in identifier_to_dxf_file:
+                            matched_cad_file = identifier_to_dxf_file[dnum]
+                    # 如果是已合并的，检查合并到的标识符
+                    if not matched_cad_file and merged_to:
+                        if merged_to in identifier_to_dxf_file:
+                            matched_cad_file = identifier_to_dxf_file[merged_to]
+
                 df.at[index, '查找结果'] = row_status
                 df.at[index, '匹配类型'] = match_type
                 df.at[index, '合并到标识符'] = merged_to
+                df.at[index, '匹配CAD文件'] = matched_cad_file
 
                 if row_status == '已找到':
                     found_count += 1
@@ -1615,11 +1765,71 @@ class BlockFinder:
             all_found_blocks = {}
             processed_blocks = {}  # 用于跟踪已处理的块 (key -> {'info': info, 'identifier': identifier})
             merged_identifier_map = {}  # 被合并到代表块的标识符 -> 代表标识符
+            identifier_to_dxf_file = {}  # 标识符 -> 匹配的DXF文件名
             total_dxf_files = len(dxf_files)
             
+            # 构建备注值到标识符的映射，用于按备注匹配DXF文件名筛选
+            remark_to_identifiers = {}  # remark_value -> set of identifiers
+            no_remark_identifiers = set()  # 没有备注的标识符
+            
+            for identifier, info in material_info.items():
+                remarks = info.get('remarks', [])
+                if not remarks:
+                    no_remark_identifiers.add(identifier)
+                else:
+                    for remark in remarks:
+                        remark_to_identifiers.setdefault(remark, set()).add(identifier)
+            
+            # 确定每个DXF文件对应的备注匹配结果，以及哪些备注未匹配任何文件
+            matched_remarks = set()  # 至少匹配一个DXF文件的备注值
+            file_to_identifiers = {}  # dxf_file -> set of identifiers to search
+            
+            for dxf_file in dxf_files:
+                dxf_basename = os.path.splitext(os.path.basename(dxf_file))[0]
+                file_identifiers = set(no_remark_identifiers)  # 始终包含无备注的标识符
+                
+                for remark, identifiers in remark_to_identifiers.items():
+                    if self._remark_matches_file(remark, dxf_basename):
+                        file_identifiers.update(identifiers)
+                        matched_remarks.add(remark)
+                
+                file_to_identifiers[dxf_file] = file_identifiers
+            
+            # 备注值未匹配任何DXF文件的标识符，应在所有文件中搜索（回退行为）
+            unmatched_remark_identifiers = set()
+            for remark, identifiers in remark_to_identifiers.items():
+                if remark not in matched_remarks:
+                    unmatched_remark_identifiers.update(identifiers)
+            
+            if unmatched_remark_identifiers:
+                for dxf_file in dxf_files:
+                    file_to_identifiers[dxf_file].update(unmatched_remark_identifiers)
+            
+            # 日志输出备注匹配信息
+            if remark_to_identifiers:
+                self._log_progress(progress_callback, f"备注匹配: {len(matched_remarks)} 个备注值匹配到DXF文件, {len(remark_to_identifiers) - len(matched_remarks)} 个备注值未匹配")
+                for remark in sorted(matched_remarks):
+                    matched_files = [os.path.basename(f) for f in dxf_files 
+                                     if self._remark_matches_file(remark, os.path.splitext(os.path.basename(f))[0])]
+                    self._log_progress(progress_callback, f"  备注 '{remark}' -> 匹配文件: {', '.join(matched_files)}")
+            
             for i, dxf_file in enumerate(dxf_files, 1):
-                self._log_progress(progress_callback, f"处理DXF文件 {i}/{total_dxf_files}: {os.path.basename(dxf_file)}")
-                found_blocks = self.search_blocks_in_dxf(dxf_file, material_info)
+                relevant_identifiers = file_to_identifiers.get(dxf_file, set(no_remark_identifiers))
+                
+                if not relevant_identifiers:
+                    self._log_progress(progress_callback, f"跳过DXF文件 {i}/{total_dxf_files}: {os.path.basename(dxf_file)} (无匹配的标识符)")
+                    continue
+                
+                # 构建当前文件需要搜索的物料信息子集
+                filtered_material_info = {k: v for k, v in material_info.items() if k in relevant_identifiers}
+                
+                self._log_progress(progress_callback, f"处理DXF文件 {i}/{total_dxf_files}: {os.path.basename(dxf_file)} (搜索 {len(filtered_material_info)}/{len(material_info)} 个标识符)")
+                found_blocks = self.search_blocks_in_dxf(dxf_file, filtered_material_info)
+                
+                # 记录找到的标识符对应的DXF文件（首次匹配）
+                for identifier in found_blocks.keys():
+                    if identifier not in identifier_to_dxf_file:
+                        identifier_to_dxf_file[identifier] = os.path.basename(dxf_file)
                 
                 # 按优先级排序标识符：物料ID优先于图号
                 # 这样可以确保物料ID优先“认领”块，从而在后续的去重逻辑中保留物料ID的匹配结果
@@ -1854,6 +2064,7 @@ class BlockFinder:
                 found_identifiers,
                 updated_excel_file,
                 merged_identifier_map=resolved_merged_identifier_map,
+                identifier_to_dxf_file=identifier_to_dxf_file,
             )
             
             if not excel_success:

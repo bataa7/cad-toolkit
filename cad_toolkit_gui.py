@@ -4379,7 +4379,7 @@ class MainWindow(QMainWindow):
     
     def init_ui(self):
         # 设置窗口标题和大小
-        version_text = f"CAD工具包 v{APP_VERSION}" if NOTIFICATION_ENABLED else "CAD工具包 v3.8.3"
+        version_text = f"CAD工具包 v{APP_VERSION}" if NOTIFICATION_ENABLED else "CAD工具包 v3.8.4"
         self.setWindowTitle(version_text)
         try:
             screen = QApplication.primaryScreen()

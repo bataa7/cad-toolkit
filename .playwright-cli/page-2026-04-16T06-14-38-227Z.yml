@@ -1,0 +1,131 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - navigation [ref=e3]:
+      - heading "CAD工具包" [level=1] [ref=e5]
+      - list [ref=e6]:
+        - listitem [ref=e7]:
+          - link "功能特性" [ref=e8] [cursor=pointer]:
+            - /url: "#features"
+        - listitem [ref=e9]:
+          - link "下载" [ref=e10] [cursor=pointer]:
+            - /url: "#download"
+        - listitem [ref=e11]:
+          - link "使用文档" [ref=e12] [cursor=pointer]:
+            - /url: "#docs"
+        - listitem [ref=e13]:
+          - link "关于" [ref=e14] [cursor=pointer]:
+            - /url: "#about"
+  - generic [ref=e16]:
+    - heading "DXF文件批量处理工具" [level=2] [ref=e17]
+    - paragraph [ref=e18]: 高效处理CAD文件，支持块管理、自动排版、BOM计算等多种功能
+    - generic [ref=e19]:
+      - link "立即下载" [ref=e20] [cursor=pointer]:
+        - /url: "#download"
+      - link "查看文档" [ref=e21] [cursor=pointer]:
+        - /url: "#docs"
+  - generic [ref=e23]:
+    - heading "核心功能" [level=2] [ref=e24]
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]: 📦
+        - heading "块批量管理" [level=3] [ref=e28]
+        - paragraph [ref=e29]: 批量导出、创建和管理CAD块，支持自动命名和属性添加
+      - generic [ref=e30]:
+        - generic [ref=e31]: 🔍
+        - heading "智能筛寻合并" [level=3] [ref=e32]
+        - paragraph [ref=e33]: 根据Excel BOM清单快速查找并合并块，按材质厚度自动分组
+      - generic [ref=e34]:
+        - generic [ref=e35]: ✏️
+        - heading "文本批量更新" [level=3] [ref=e36]
+        - paragraph [ref=e37]: 根据Excel数据批量更新CAD文本内容，支持数量追加和文本重构
+      - generic [ref=e38]:
+        - generic [ref=e39]: 📐
+        - heading "自动排版" [level=3] [ref=e40]
+        - paragraph [ref=e41]: 智能排版CAD图形，按材质和厚度分组，优化板材利用率
+      - generic [ref=e42]:
+        - generic [ref=e43]: 🔗
+        - heading "文件合并" [level=3] [ref=e44]
+        - paragraph [ref=e45]: 批量合并多个DXF文件，自动布局排列，可选显示文件名
+      - generic [ref=e46]:
+        - generic [ref=e47]: 📊
+        - heading "BOM数量计算" [level=3] [ref=e48]
+        - paragraph [ref=e49]: 自动计算层级BOM总数量，验证数据完整性和序号关系
+  - generic [ref=e51]:
+    - heading "CAD工具包" [level=2] [ref=e52]
+    - generic [ref=e53]:
+      - generic [ref=e54]:
+        - generic [ref=e55]: ✓
+        - generic [ref=e56]:
+          - heading "批量处理" [level=4] [ref=e57]
+          - paragraph [ref=e58]: 支持单个文件、多个文件和整个目录的批量处理
+      - generic [ref=e59]:
+        - generic [ref=e60]: ✓
+        - generic [ref=e61]:
+          - heading "Excel集成" [level=4] [ref=e62]
+          - paragraph [ref=e63]: 与Excel无缝集成，支持BOM清单导入和结果导出
+      - generic [ref=e64]:
+        - generic [ref=e65]: ✓
+        - generic [ref=e66]:
+          - heading "智能识别" [level=4] [ref=e67]
+          - paragraph [ref=e68]: 自动识别材质、厚度、物料ID等信息，支持多种格式
+      - generic [ref=e69]:
+        - generic [ref=e70]: ✓
+        - generic [ref=e71]:
+          - heading "友好界面" [level=4] [ref=e72]
+          - paragraph [ref=e73]: 图形化操作界面，实时进度显示，操作简单直观
+  - generic [ref=e75]:
+    - heading "下载" [level=2] [ref=e76]
+    - generic [ref=e77]:
+      - heading "CAD工具包 v3.8.3" [level=3] [ref=e78]
+      - paragraph [ref=e79]: 最新版本 | 更新日期：2026年4月16日
+      - list [ref=e80]:
+        - listitem [ref=e81]: ✓ 支持Windows 10/11
+        - listitem [ref=e82]: ✓ 无需安装，解压即用
+        - listitem [ref=e83]: ✓ 包含完整功能模块
+        - listitem [ref=e84]: ✓ 附带详细使用文档
+      - link "下载 CAD工具包" [ref=e85] [cursor=pointer]:
+        - /url: CADToolkit_Setup_v3.8.3.exe
+      - paragraph [ref=e86]: 文件大小：约 60MB | 免费使用
+  - generic [ref=e88]:
+    - heading "使用文档" [level=2] [ref=e89]
+    - generic [ref=e90]:
+      - generic [ref=e91]:
+        - heading "快速开始" [level=3] [ref=e92]
+        - paragraph [ref=e93]: 下载程序后，双击运行即可启动图形界面。首次启动可能需要几秒钟加载时间。
+      - generic [ref=e94]:
+        - heading "功能模块" [level=3] [ref=e95]
+        - list [ref=e96]:
+          - listitem [ref=e97]: • 块批量导出 - 提取DXF文件中的所有块
+          - listitem [ref=e98]: • 块批量创建 - 将图形组合成块并命名
+          - listitem [ref=e99]: • 块筛寻和合并 - 根据Excel查找并合并块
+          - listitem [ref=e100]: • 文本内容更改 - 批量更新CAD文本
+          - listitem [ref=e101]: • CAD文件合并 - 合并多个DXF文件
+          - listitem [ref=e102]: • BOM数量计算 - 计算层级BOM总数量
+          - listitem [ref=e103]: • 自动排版 - 智能排版优化板材
+      - generic [ref=e104]:
+        - heading "注意事项" [level=3] [ref=e105]
+        - list [ref=e106]:
+          - listitem [ref=e107]: • 处理前请备份原始文件
+          - listitem [ref=e108]: • 支持DXF R2010及以下版本
+          - listitem [ref=e109]: • 建议先用少量文件测试
+          - listitem [ref=e110]: • 大量文件建议分批处理
+      - generic [ref=e111]:
+        - heading "详细文档" [level=3] [ref=e112]
+        - paragraph [ref=e113]: 提供完整的使用说明和功能模块文档，包含详细的操作步骤和示例。
+        - link "使用说明 (PDF)" [ref=e114] [cursor=pointer]:
+          - /url: CAD工具包使用说明.pdf
+        - link "功能模块说明 (PDF)" [ref=e115] [cursor=pointer]:
+          - /url: CAD工具包功能模块说明.pdf
+  - generic [ref=e117]:
+    - heading "关于项目" [level=2] [ref=e118]
+    - generic [ref=e119]:
+      - paragraph [ref=e120]: 主要解决CAD图纸批量处理、BOM清单管理、自动排版等实际生产需求。
+      - generic [ref=e121]:
+        - heading "技术栈" [level=3] [ref=e122]
+        - generic [ref=e123]:
+          - generic [ref=e124]: Python
+          - generic [ref=e125]: ezdxf
+          - generic [ref=e126]: PyQt5
+          - generic [ref=e127]: pandas
+  - contentinfo [ref=e128]:
+    - paragraph [ref=e130]: © 2026 CAD工具包
