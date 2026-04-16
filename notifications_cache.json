@@ -1,9 +1,10 @@
 {
   "read": [
+    "notif_002",
+    "notif_006",
+    "notif_003",
     "notif_005",
     "notif_001",
-    "notif_004",
-    "notif_002",
-    "notif_003"
+    "notif_004"
   ]
 }
