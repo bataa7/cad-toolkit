@@ -4,7 +4,7 @@
 """
 
 # 应用版本
-APP_VERSION = "3.8.3"
+APP_VERSION = "3.8.5"
 
 # 消息推送配置
 NOTIFICATION_CONFIG = {

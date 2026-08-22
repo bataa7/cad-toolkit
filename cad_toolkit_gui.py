@@ -2,6 +2,8 @@ import sys
 import os
 import time
 import re
+import csv
+from collections import defaultdict
 from pathlib import Path
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
@@ -50,7 +52,7 @@ try:
 except ImportError as e:
     print(f"消息推送和更新系统未安装: {e}")
     NOTIFICATION_ENABLED = False
-    APP_VERSION = "3.8.3"
+    APP_VERSION = "3.8.5"
 
 try:
     from BOM.bom_searcher import run_search as run_bom_search
@@ -4204,6 +4206,575 @@ class SolidEdgeNestingTab(QWidget):
             except Exception:
                 pass
 
+# ============================================================================
+# 图号数量核对（原 数量核对.py，已并入主程序）
+# 功能：BOM(Excel) 的"图号/总数量" 与 下料图(DXF) 的"共N件"标注按图号核对，
+#       生成明细 CSV 与文字报告；外购/标准件/型材自动归类为未下料。
+# ============================================================================
+class QtyCheck:
+    """图号数量核对核心逻辑（源自 数量核对.py，整合进主程序以便打包分发）。"""
+
+    # 表头列识别：按"表头文字包含关键字"自动定位所在列，无需写死列号。
+    # 这样不同单据即使列顺序/有无物料ID列不同也能自动适配。
+    HEADER_MAX_SCAN = 8       # 在前几行内自动搜索表头行
+    HEADER_KEYS = {
+        "tuhao":  ("图号",),
+        "name":   ("名称",),
+        "thick":  ("厚度", "板厚", "规格"),
+        "total":  ("总数量", "总数"),
+        "remark": ("备注",),
+        "matid":  ("物料ID", "物料编码", "料号"),   # 备用匹配键，可能不存在
+        "qty":    ("数量",),                        # 单件数量(总数量缺失时的兜底)
+    }
+    ASSEMBLY_FLAG = "组件"      # 厚度列出现此值 => 组件行(不下料)
+
+    # 图号/物料编码：通用长数字编码，可带 -后缀。不写死前缀，避免换单据时匹配失败。
+    CODE_RE = re.compile(r"\d{7,}(?:-[0-9A-Za-z]+)*")
+    # 下料图中的数量标注"共N件"
+    GONG_RE = re.compile(r"共\s*(\d+)\s*件")
+    # 钣金件判定：厚度/板厚/规格列出现 "T2"、"t3.0"、"T 2.5" 之类(T+板厚数字)
+    #   要求 T 处于词首(前面不是字母/数字)，避免 GB_T5783、SUS304T2 之类被误判
+    SHEETMETAL_RE = re.compile(r"(?<![0-9A-Za-z_])[Tt]\s*\d+(?:\.\d+)?")
+
+    # -------------------- DXF 文本解析 --------------------
+    @staticmethod
+    def clean_mtext(s):
+        """去除 AutoCAD MTEXT 的格式控制码，返回纯文本。"""
+        if s is None:
+            return ""
+        t = s.replace("\\U+2205", "φ")          # 直径符号
+        for pat in (r"\\f[^;]*;", r"\\F[^;]*;", r"\\C\d+;", r"\\p[^;]*;",
+                    r"\\H[^;]*;", r"\\A\d+;", r"\\W[^;]*;", r"\\Q[^;]*;", r"\\T[^;]*;"):
+            t = re.sub(pat, "", t)
+        t = (t.replace("\\P", " ").replace("{", "").replace("}", "")
+               .replace("\\~", " ").replace("\u3000", " "))
+        return re.sub(r"\s+", " ", t).strip()
+
+    @staticmethod
+    def extract_dxf_texts(path):
+        """读取 DXF，返回所有 TEXT/MTEXT/ATTRIB/ATTDEF 的文本内容列表。"""
+        with open(path, "r", encoding="gbk", errors="replace") as f:
+            lines = [ln.rstrip("\r\n") for ln in f]
+
+        # DXF 为 (组码, 值) 成对出现
+        pairs = []
+        i = 0
+        while i + 1 < len(lines):
+            pairs.append((lines[i].strip(), lines[i + 1]))
+            i += 2
+
+        texts = []
+        cur_type = None
+        parts = []          # MTEXT 续行(组码3)
+        code1 = None        # 组码1(正文)
+
+        def flush():
+            if cur_type in ("TEXT", "MTEXT", "ATTRIB", "ATTDEF"):
+                full = "".join(parts) + (code1 or "")
+                if full.strip():
+                    texts.append(full)
+
+        for code, val in pairs:
+            if code == "0":
+                flush()
+                cur_type = val.strip()
+                parts, code1 = [], None
+            elif cur_type in ("TEXT", "MTEXT", "ATTRIB", "ATTDEF"):
+                if code == "3":
+                    parts.append(val)
+                elif code == "1":
+                    code1 = val
+        flush()
+        return texts
+
+    # -------------------- 图号归一化 --------------------
+    @staticmethod
+    def norm_drawing_no(raw):
+        """把 BOM 单元格里的图号归一化为主编码。
+        例：'101002000142（248020700-1）' -> '101002000142'
+            '2303000524-1'               -> '2303000524-1'
+        不限定前缀；非数字编码(如 GB_T5783) 原样返回。"""
+        if raw is None:
+            return None
+        s = str(raw).strip()
+        s2 = re.split(r"[（(]", s)[0].strip()      # 去掉括号里的别名
+        m = QtyCheck.CODE_RE.match(s2)
+        return m.group(0) if m else (s2 or s)
+
+    # -------------------- 读取 Excel BOM --------------------
+    @staticmethod
+    def locate_header(ws):
+        """在前 HEADER_MAX_SCAN 行内找到表头行，并把每个字段映射到列号。
+        返回 (header_row, colmap)；colmap 形如 {"tuhao":3, "name":4, ...}。
+        匹配规则：单元格文字与关键字相等优先；否则包含关键字。为避免"数量/总数量"
+        互相误判，先匹配更具体的字段(总数量)，且相等匹配优先于包含匹配。"""
+        best_row, best_map, best_hit = None, {}, -1
+        for hr in range(1, min(ws.max_row, QtyCheck.HEADER_MAX_SCAN) + 1):
+            cells = {c: (str(ws.cell(row=hr, column=c).value).strip()
+                         if ws.cell(row=hr, column=c).value is not None else "")
+                     for c in range(1, ws.max_column + 1)}
+            colmap = {}
+            used = set()
+            # 先处理关键字更长/更具体的字段，减少歧义（总数量 先于 数量）
+            for field in ("tuhao", "name", "thick", "total", "remark", "matid", "qty"):
+                keys = QtyCheck.HEADER_KEYS[field]
+                found = None
+                # 1) 精确相等
+                for c, txt in cells.items():
+                    if c in used:
+                        continue
+                    if any(txt == k for k in keys):
+                        found = c
+                        break
+                # 2) 包含
+                if found is None:
+                    for c, txt in cells.items():
+                        if c in used or not txt:
+                            continue
+                        if any(k in txt for k in keys):
+                            found = c
+                            break
+                if found is not None:
+                    colmap[field] = found
+                    used.add(found)
+            hit = len(colmap)
+            if hit > best_hit:
+                best_hit, best_row, best_map = hit, hr, colmap
+        return best_row, best_map
+
+    @staticmethod
+    def load_bom(path):
+        """读取 Excel BOM，按图号累加需求总数量。"""
+        try:
+            import openpyxl
+        except ImportError:
+            raise RuntimeError("缺少依赖 openpyxl，请先运行：pip install openpyxl")
+
+        wb = openpyxl.load_workbook(path, data_only=True)
+        ws = wb[wb.sheetnames[0]]
+
+        header_row, col = QtyCheck.locate_header(ws)
+        if "tuhao" not in col or "total" not in col:
+            raise ValueError(f"未能在前 {QtyCheck.HEADER_MAX_SCAN} 行识别到'图号'和'总数量'表头，请检查表格。已识别: {col}")
+
+        def cell(r, field):
+            c = col.get(field)
+            return ws.cell(row=r, column=c).value if c else None
+
+        total_by_code = defaultdict(int)      # 图号 -> Excel 总数量合计
+        rows_by_code = defaultdict(list)      # 图号 -> [Excel 行号]
+        matid_by_code = defaultdict(set)      # 图号 -> {物料ID 备用匹配键}
+        name_by_code = {}
+        remark_by_code = {}
+        thick_by_code = {}                    # 图号 -> 厚度/板厚/规格 原始值
+        assemblies = 0
+        detail_rows = 0
+
+        for r in range(header_row + 1, ws.max_row + 1):
+            tuhao = cell(r, "tuhao")
+            name = cell(r, "name")
+            thick = cell(r, "thick")
+            total = cell(r, "total")
+            remark = cell(r, "remark")
+            matid = cell(r, "matid")
+            if tuhao is None and name is None:
+                continue
+            if tuhao is None:
+                continue
+            if str(thick).strip() == QtyCheck.ASSEMBLY_FLAG:      # 组件行不下料
+                assemblies += 1
+                continue
+            detail_rows += 1
+            key = QtyCheck.norm_drawing_no(tuhao)
+            try:
+                qty = int(total)
+            except (TypeError, ValueError):
+                qty = 0
+            total_by_code[key] += qty
+            rows_by_code[key].append(str(r))
+            if matid is not None:
+                matid_by_code[key].add(str(matid).strip())
+            name_by_code.setdefault(key, name)
+            remark_by_code.setdefault(key, remark)
+            thick_by_code.setdefault(key, thick)
+
+        return {
+            "header_row": header_row,
+            "colmap": col,
+            "total_by_code": total_by_code,
+            "rows_by_code": rows_by_code,
+            "matid_by_code": matid_by_code,
+            "name_by_code": name_by_code,
+            "remark_by_code": remark_by_code,
+            "thick_by_code": thick_by_code,
+            "assemblies": assemblies,
+            "detail_rows": detail_rows,
+        }
+
+    # -------------------- 读取 DXF --------------------
+    @staticmethod
+    def load_dxf(path):
+        """读取 DXF，按图号收集"共N件"。"""
+        raw = QtyCheck.extract_dxf_texts(path)
+        labels = [QtyCheck.clean_mtext(t) for t in raw]
+        gong_by_code = defaultdict(list)     # 图号 -> [共N件 值...]
+        for lbl in labels:
+            m = QtyCheck.GONG_RE.search(lbl)
+            g = int(m.group(1)) if m else None
+            for c in QtyCheck.CODE_RE.findall(lbl):
+                gong_by_code[c].append(g)
+        return {
+            "n_entities": len(raw),
+            "gong_by_code": gong_by_code,
+            "n_codes": len(gong_by_code),
+        }
+
+    # -------------------- 核对 --------------------
+    @staticmethod
+    def is_sheetmetal(thick):
+        """厚度/板厚/规格值形如 "T2"、"t3.0" (T+板厚数字) => 钣金件。"""
+        return bool(QtyCheck.SHEETMETAL_RE.search(str(thick or "")))
+
+    @staticmethod
+    def is_reasonable_missing(code, name, remark, thick=None):
+        """判断某图号在 DXF 中缺失是否属合理。
+        判定完全以"厚度/板厚/规格"列为准：
+          - 该列为 T+数字(如 T2/T3.0) => 钣金件，缺失即视为漏排；
+          - 其余一律视为非钣金件(未下料，合理缺失)。"""
+        if QtyCheck.is_sheetmetal(thick):
+            return False, "钣金件疑似漏排"
+        return True, "非钣金件(未下料)"
+
+    @staticmethod
+    def compare(bom, dxf):
+        rows = []
+        gong_by_code = dxf["gong_by_code"]
+        for code in sorted(bom["total_by_code"]):
+            et = bom["total_by_code"][code]
+            name = bom["name_by_code"].get(code)
+            remark = bom["remark_by_code"].get(code)
+            thick = bom["thick_by_code"].get(code)
+
+            # 先用图号匹配；若图号在下料图中查不到，再用物料ID作备用键匹配
+            # （部分下料图按物料ID而非图号标注）
+            gongs = [g for g in gong_by_code.get(code, []) if g is not None]
+            matched_key = code
+            if not gongs:
+                for mid in bom["matid_by_code"].get(code, ()):
+                    cand = [g for g in gong_by_code.get(mid, []) if g is not None]
+                    if cand:
+                        gongs = cand
+                        matched_key = mid
+                        break
+
+            setrepr = ";".join(str(x) for x in sorted(set(gongs)))
+
+            if not gongs:
+                reasonable, why = QtyCheck.is_reasonable_missing(code, name, remark, thick)
+                status = f"缺图-{why}" if not reasonable else f"未下料({why})"
+                level = "warn" if not reasonable else "info"
+            elif max(gongs) == et:
+                status = "一致"
+                level = "ok"
+            elif et in set(gongs):
+                status = "一致(另含其他批量标注)"
+                level = "ok"
+            else:
+                status = "不一致"
+                level = "bad"
+
+            rows.append({
+                "code": code, "name": name, "excel_total": et,
+                "dxf_gong": setrepr or "无", "status": status, "level": level,
+                "matched_key": matched_key if matched_key != code else "",
+                "rows": ";".join(bom["rows_by_code"][code]),
+                "remark": remark or "",
+                "thick": "" if thick is None else str(thick).strip(),
+            })
+        return rows
+
+    # -------------------- 报告输出 --------------------
+    @staticmethod
+    def write_csv(rows, out_csv):
+        with open(out_csv, "w", newline="", encoding="utf-8-sig") as f:
+            w = csv.writer(f)
+            w.writerow(["图号", "名称", "厚度/规格", "Excel总数量合计", "DXF共N件标注",
+                        "核对结果", "匹配依据(物料ID)", "Excel出现行", "备注"])
+            for r in rows:
+                w.writerow([r["code"], r["name"], r["thick"], r["excel_total"], r["dxf_gong"],
+                            r["status"], r["matched_key"], r["rows"], r["remark"]])
+
+    @staticmethod
+    def build_report(rows, bom, dxf, xlsx, dxf_path):
+        n = len(rows)
+        ok = sum(1 for r in rows if r["level"] == "ok")
+        bad = [r for r in rows if r["level"] == "bad"]
+        warn = [r for r in rows if r["level"] == "warn"]
+        info = [r for r in rows if r["level"] == "info"]
+
+        lines = []
+        add = lines.append
+        add("=" * 70)
+        add("           图号数量核对报告")
+        add("=" * 70)
+        add(f"BOM 文件 : {os.path.basename(xlsx)}")
+        add(f"DXF 文件 : {os.path.basename(dxf_path)}")
+        # 显示自动识别到的表头位置，便于用户核对列定位是否正确
+        col = bom.get("colmap", {})
+        colnames = {"tuhao": "图号", "name": "名称", "thick": "厚度",
+                    "total": "总数量", "remark": "备注", "matid": "物料ID", "qty": "数量"}
+        col_desc = "  ".join(f"{colnames[k]}=第{col[k]}列"
+                             for k in ("tuhao", "name", "thick", "total", "matid")
+                             if k in col)
+        add(f"表头行 : 第{bom.get('header_row')}行    识别列 : {col_desc}")
+        add("")
+        add(f"BOM 明细行(零件, 不含组件): {bom['detail_rows']}    组件行(不下料): {bom['assemblies']}")
+        add(f"DXF 文本实体数: {dxf['n_entities']}    可识别不同图号数: {dxf['n_codes']}")
+        add("-" * 70)
+        add(f"参与核对的零件图号总数 : {n}")
+        add(f"  ✅ 一致            : {ok}")
+        add(f"  ❌ 数量不一致       : {len(bad)}")
+        add(f"  ⚠️ 缺图(疑似漏排)   : {len(warn)}")
+        add(f"  ℹ️ 未下料(外购/型材): {len(info)}")
+        add("=" * 70)
+
+        if bad:
+            add("\n❌ 【数量不一致 —— 需重点确认】")
+            for r in bad:
+                add(f"  图号 {r['code']} ({r['name']})  Excel合计={r['excel_total']}  "
+                    f"DXF共N件={r['dxf_gong']}   (BOM行 {r['rows']}) {r['remark']}")
+
+        if warn:
+            add("\n⚠️ 【DXF 中缺失 —— 疑似漏排】")
+            for r in warn:
+                add(f"  图号 {r['code']} ({r['name']})  Excel需求={r['excel_total']}  "
+                    f"DXF无此图号   (BOM行 {r['rows']}) {r['remark']}")
+
+        if info:
+            add("\nℹ️ 【DXF 中缺失 —— 合理(外购/标准件/型材)】")
+            for r in info:
+                add(f"  图号 {r['code']} ({r['name']})  {r['status']}  {r['remark']}")
+
+        if not bad and not warn:
+            add("\n结论：所有应下料零件的图号与数量均一致，核对通过。")
+        else:
+            add(f"\n结论：{len(bad)} 项数量不一致、{len(warn)} 项疑似漏排，请人工复核上述条目。")
+        add("=" * 70)
+        return "\n".join(lines)
+
+
+class QuantityCheckWorker(QThread):
+    """图号数量核对线程：BOM(Excel) 与 下料图(DXF) 数量比对"""
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(bool, str)
+
+    def __init__(self, xlsx_path, dxf_path, out_dir):
+        super().__init__()
+        self.xlsx_path = xlsx_path
+        self.dxf_path = dxf_path
+        self.out_dir = out_dir
+
+    def run(self):
+        try:
+            self.progress.emit(f"读取 BOM: {os.path.basename(self.xlsx_path)} ...")
+            bom = QtyCheck.load_bom(self.xlsx_path)
+
+            self.progress.emit(f"解析 DXF: {os.path.basename(self.dxf_path)} ...")
+            dxf = QtyCheck.load_dxf(self.dxf_path)
+
+            self.progress.emit("正在核对数量 ...")
+            rows = QtyCheck.compare(bom, dxf)
+
+            if not os.path.isdir(self.out_dir):
+                os.makedirs(self.out_dir, exist_ok=True)
+
+            out_csv = os.path.join(self.out_dir, "图号数量核对结果.csv")
+            out_txt = os.path.join(self.out_dir, "图号数量核对报告.txt")
+            QtyCheck.write_csv(rows, out_csv)
+            report = QtyCheck.build_report(rows, bom, dxf, self.xlsx_path, self.dxf_path)
+            with open(out_txt, "w", encoding="utf-8") as f:
+                f.write(report + "\n")
+
+            # 完整报告输出到日志区
+            self.progress.emit(report)
+            self.progress.emit(f"明细已导出: {out_csv}")
+            self.progress.emit(f"报告已导出: {out_txt}")
+            self.finished.emit(True, f"核对完成。\n明细: {out_csv}\n报告: {out_txt}")
+        except Exception as e:
+            self.progress.emit(f"错误: {str(e)}")
+            self.finished.emit(False, str(e))
+
+
+class QuantityCheckTab(QWidget):
+    """图号数量核对选项卡：BOM(Excel) <-> 下料图(DXF) 数量核对"""
+    def __init__(self):
+        super().__init__()
+        self.worker = None
+        self.init_ui()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout()
+
+        # 说明
+        tip = QLabel("将生产 BOM(Excel) 的“图号/总数量”与下料图(DXF) 中“共N件”标注按图号核对，"
+                     "生成明细 CSV 与文字报告。外购/标准件/型材自动归类为未下料。")
+        tip.setWordWrap(True)
+        tip.setStyleSheet("color: #555; padding: 4px;")
+        main_layout.addWidget(tip)
+
+        # 文件选择
+        file_group = QGroupBox("文件选择")
+        file_layout = QFormLayout()
+
+        excel_row = QHBoxLayout()
+        self.excel_edit = QLineEdit()
+        self.excel_edit.setPlaceholderText("选择 BOM Excel 文件 (.xlsx)")
+        self.excel_btn = QPushButton("选择文件")
+        self.excel_btn.clicked.connect(self.select_excel)
+        excel_row.addWidget(self.excel_edit)
+        excel_row.addWidget(self.excel_btn)
+        file_layout.addRow("BOM Excel:", excel_row)
+
+        dxf_row = QHBoxLayout()
+        self.dxf_edit = QLineEdit()
+        self.dxf_edit.setPlaceholderText("选择下料图 DXF 文件 (.dxf)")
+        self.dxf_btn = QPushButton("选择文件")
+        self.dxf_btn.clicked.connect(self.select_dxf)
+        dxf_row.addWidget(self.dxf_edit)
+        dxf_row.addWidget(self.dxf_btn)
+        file_layout.addRow("下料图 DXF:", dxf_row)
+
+        out_row = QHBoxLayout()
+        self.out_edit = QLineEdit()
+        self.out_edit.setPlaceholderText("默认输出到程序所在目录")
+        # 默认输出目录：脚本所在目录
+        self.out_edit.setText(os.path.dirname(os.path.abspath(__file__)))
+        self.out_btn = QPushButton("选择目录")
+        self.out_btn.clicked.connect(self.select_output_dir)
+        out_row.addWidget(self.out_edit)
+        out_row.addWidget(self.out_btn)
+        file_layout.addRow("输出目录:", out_row)
+
+        file_group.setLayout(file_layout)
+        main_layout.addWidget(file_group)
+
+        # 按钮
+        btn_layout = QHBoxLayout()
+        self.run_btn = QPushButton("开始核对")
+        self.run_btn.setMinimumHeight(40)
+        self.run_btn.clicked.connect(self.run_check)
+        self.clear_log_btn = QPushButton("清空日志")
+        self.clear_log_btn.clicked.connect(self.clear_log)
+        self.open_out_btn = QPushButton("打开输出目录")
+        self.open_out_btn.clicked.connect(self.open_output_dir)
+        btn_layout.addWidget(self.run_btn)
+        btn_layout.addWidget(self.clear_log_btn)
+        btn_layout.addWidget(self.open_out_btn)
+        main_layout.addLayout(btn_layout)
+
+        # 进度条
+        self.progress = QProgressBar()
+        self.progress.setValue(0)
+        self.progress.setFormat("准备就绪")
+        main_layout.addWidget(self.progress)
+
+        # 日志/报告
+        log_group = QGroupBox("核对报告")
+        log_layout = QVBoxLayout()
+        self.log_output = QTextEdit()
+        self.log_output.setReadOnly(True)
+        self.log_output.setFont(QFont("Consolas", 10))
+        log_layout.addWidget(self.log_output)
+        log_group.setLayout(log_layout)
+        main_layout.addWidget(log_group, 1)
+
+        self.setLayout(main_layout)
+
+    def select_excel(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择 BOM Excel 文件", "", "Excel Files (*.xlsx *.xlsm);;All Files (*)")
+        if path:
+            self.excel_edit.setText(path)
+            # 默认输出目录跟随 Excel 所在目录
+            if not self.out_edit.text().strip():
+                self.out_edit.setText(os.path.dirname(path))
+
+    def select_dxf(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择下料图 DXF 文件", "", "DXF Files (*.dxf);;All Files (*)")
+        if path:
+            self.dxf_edit.setText(path)
+
+    def select_output_dir(self):
+        d = QFileDialog.getExistingDirectory(self, "选择输出目录")
+        if d:
+            self.out_edit.setText(d)
+
+    def open_output_dir(self):
+        out_dir = self.out_edit.text().strip()
+        if not out_dir or not os.path.isdir(out_dir):
+            QMessageBox.warning(self, "提示", "输出目录不存在，请先选择有效目录。")
+            return
+        import subprocess
+        try:
+            if sys.platform.startswith("win"):
+                subprocess.Popen(f'explorer "{out_dir}"')
+            else:
+                subprocess.Popen(["xdg-open", out_dir])
+        except Exception:
+            pass
+
+    def clear_log(self):
+        self.log_output.clear()
+
+    def add_log(self, text):
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        # 报告文本（以 ==== / ---- 分隔线开头）原样输出，不附加时间戳，避免破坏排版
+        if text.startswith("=") or text.startswith("-"):
+            self.log_output.append(text)
+        else:
+            self.log_output.append(f"[{timestamp}] {text}")
+        self.log_output.moveCursor(QTextCursor.End)
+
+    def run_check(self):
+        xlsx = self.excel_edit.text().strip()
+        dxf_path = self.dxf_edit.text().strip()
+        out_dir = self.out_edit.text().strip()
+
+        if not xlsx or not os.path.isfile(xlsx):
+            QMessageBox.warning(self, "提示", "请选择有效的 BOM Excel 文件")
+            return
+        if not dxf_path or not os.path.isfile(dxf_path):
+            QMessageBox.warning(self, "提示", "请选择有效的下料图 DXF 文件")
+            return
+        if not out_dir:
+            out_dir = os.path.dirname(os.path.abspath(__file__))
+            self.out_edit.setText(out_dir)
+
+        self.run_btn.setEnabled(False)
+        self.progress.setValue(0)
+        self.progress.setFormat("正在核对...")
+        self.add_log(f"开始核对：BOM={os.path.basename(xlsx)}  DXF={os.path.basename(dxf_path)}")
+
+        self.worker = QuantityCheckWorker(xlsx, dxf_path, out_dir)
+        self.worker.progress.connect(self.add_log)
+        self.worker.finished.connect(self.on_finished)
+        self.worker.start()
+
+    def on_finished(self, success, msg):
+        self.run_btn.setEnabled(True)
+        if success:
+            self.progress.setValue(100)
+            self.progress.setFormat("核对完成")
+            self.add_log(msg)
+            QMessageBox.information(self, "完成", msg)
+        else:
+            self.progress.setValue(0)
+            self.progress.setFormat("核对失败")
+            QMessageBox.critical(self, "失败", f"核对失败: {msg}")
+
+
 class FeaturesDialog(QDialog):
     """功能介绍对话框"""
     def __init__(self, parent=None):
@@ -4319,6 +4890,16 @@ class FeaturesDialog(QDialog):
                 <li><b>自动化：</b>一键生成导入清单(CSV)和批处理脚本，大幅提高排版效率。</li>
             </ul>
         </div>
+
+        <div class="section-box">
+            <h3>9. 图号数量核对</h3>
+            <p>核对生产 BOM(Excel) 与下料图(DXF) 的零件数量是否一致。</p>
+            <ul>
+                <li><b>核对方式：</b>按"图号"将 BOM"总数量"与下料图"共N件"标注比对，同一图号在多组件中累加。</li>
+                <li><b>智能分类：</b>厚度列为 T+数字(如 T2/T3.0)判定为钣金件，缺失即疑似漏排；外购/标准件/型材自动归为未下料。</li>
+                <li><b>输出：</b>明细 CSV(<span class="highlight">图号数量核对结果.csv</span>) 与文字报告(<span class="highlight">图号数量核对报告.txt</span>)。</li>
+            </ul>
+        </div>
         """
         self.browser.setHtml(html_content)
         layout.addWidget(self.browser)
@@ -4379,7 +4960,7 @@ class MainWindow(QMainWindow):
     
     def init_ui(self):
         # 设置窗口标题和大小
-        version_text = f"CAD工具包 v{APP_VERSION}" if NOTIFICATION_ENABLED else "CAD工具包 v3.8.4"
+        version_text = f"CAD工具包 v{APP_VERSION}" if NOTIFICATION_ENABLED else "CAD工具包 v3.8.5"
         self.setWindowTitle(version_text)
         try:
             screen = QApplication.primaryScreen()
@@ -4445,7 +5026,7 @@ class MainWindow(QMainWindow):
         # 添加侧边栏项
         self.sidebar_custom_items = []
         nav_items = [
-            ("BOM搜索汇总", "bom_search", "测试"),
+            ("BOM搜索汇总", "bom_search", ""),
             ("BOM数量计算", "bom", ""),
             ("块批量导出", "export", ""),
             ("CAD块创建", "create", ""),
@@ -4453,7 +5034,8 @@ class MainWindow(QMainWindow):
             ("CAD文件合并", "merge", ""),
             ("文本内容更改", "text", ""),
             ("DXF/DWG 转换", "convert", ""),
-            ("2D Nesting 排版", "nest", "")
+            ("2D Nesting 排版", "nest", ""),
+            ("图号数量核对", "qty_check", "")
         ]
         
         for name, icon_name, badge_text in nav_items:
@@ -4494,7 +5076,8 @@ class MainWindow(QMainWindow):
         self.text_updater_tab = TextUpdaterTab()
         self.converter_tab = DxfDwgConverterTab()
         self.nesting_tab = SolidEdgeNestingTab()
-        
+        self.qty_check_tab = QuantityCheckTab()
+
         # 添加页面到堆叠窗口
         self.stacked_widget.addWidget(self.bom_search_tab)
         self.stacked_widget.addWidget(self.bom_tab)
@@ -4505,6 +5088,7 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.text_updater_tab)
         self.stacked_widget.addWidget(self.converter_tab)
         self.stacked_widget.addWidget(self.nesting_tab)
+        self.stacked_widget.addWidget(self.qty_check_tab)
         
         content_layout.addWidget(self.stacked_widget)
         
