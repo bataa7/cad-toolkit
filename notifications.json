@@ -7,8 +7,6 @@
       "level": "success",
       "date": "2026-08-22"
     },
-{
-  "notifications": [
     {
       "id": "notif_007",
       "title": "v3.8.4 修复快筛选合并模块BUG",
@@ -46,4 +44,3 @@
     }
   ]
 }
-，
