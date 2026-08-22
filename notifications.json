@@ -1,6 +1,15 @@
 {
   "notifications": [
     {
+      "id": "notif_008",
+      "title": "v3.8.5 新增图号数量核对",
+      "content": "CAD工具包 v3.8.5 已发布。<br><br>本次更新：<br>• EXCEL数量和DXF数量核对<br>• 核对方式：按图号将BOM总数量与下料图共N件标注比对，同一图号在多组件中累加<br>• 输出：明细 CSV(图号数量核对结果.csv) 与文字报告(图号数量核对报告.txt)。<br>",
+      "level": "success",
+      "date": "2026-08-22"
+    },
+{
+  "notifications": [
+    {
       "id": "notif_007",
       "title": "v3.8.4 修复快筛选合并模块BUG",
       "content": "CAD工具包 v3.8.4 已发布。<br><br>本次更新：<br>• 修复快筛选合并BUG<br>• 筛选新增单号匹配筛找<br>• 避免随机筛选，匹配最新单号。<br>前往www.liuyanbo.eu.cc网站下载最新版本。",
